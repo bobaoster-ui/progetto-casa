@@ -1,20 +1,16 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 
-st.title("🧪 Test Connessione Totale")
+st.title("🏠 Test Monitoraggio")
 
+# Connessione
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 try:
-    # Legge la tab 'camera' ignorando ogni tipo di cache
+    # Leggiamo la tabella 'camera' (assicurati che si chiami così!)
     df = conn.read(worksheet="camera", ttl=0)
-    
-    if df is not None:
-        st.success("FINALMENTE! Dati letti:")
-        st.write(df)
-    else:
-        st.warning("Il foglio è connesso ma non restituisce dati.")
-
+    st.success("Connessione riuscita!")
+    st.dataframe(df)
 except Exception as e:
-    st.error("L'errore persiste. Ecco il dettaglio tecnico:")
-    st.code(str(e))
+    st.error("C'è ancora un problema di configurazione.")
+    st.write("Errore rilevato:", e)
