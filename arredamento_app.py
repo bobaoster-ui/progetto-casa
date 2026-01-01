@@ -84,6 +84,10 @@ else:
     try:
         df_origine = conn.read(worksheet=stanza_selezionata, ttl=0)
         df_origine = pulisci_df(df_origine)
+    except Exception as e:
+        st.error(f"Errore di connessione a Google Sheets: {e}")
+        st.info("Prova a controllare se l'URL nei Secrets è corretto e se il foglio è condiviso come 'Editor'.")
+        st.stop()
 
         tot_st = df_origine['Importo Totale'].sum()
         mask_s = df_origine['Acquista S/N'].str.upper().str.strip() == 'S'
