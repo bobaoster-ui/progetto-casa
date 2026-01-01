@@ -57,7 +57,7 @@ if selezione == "📊 Riepilogo Casa":
     with st.spinner("Sincronizzazione Cloud..."):
         for stanza in nomi_stanze:
             try:
-                df = conn.read(worksheet=stanza)
+                df = conn.read(worksheet=stanza, ttl=0)
                 if df is not None and not df.empty:
                     df = pulisci_df(df)
                     tot = df['Importo Totale'].sum()
@@ -82,7 +82,7 @@ else:
     st.subheader(f"Gestione: {stanza_selezionata}")
 
     try:
-        df_origine = conn.read(worksheet=stanza_selezionata)
+        df_origine = conn.read(worksheet=stanza_selezionata, ttl=0)
         df_origine = pulisci_df(df_origine)
 
         tot_st = df_origine['Importo Totale'].sum()
