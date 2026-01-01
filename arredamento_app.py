@@ -2,33 +2,35 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-st.set_page_config(page_title="Monitoraggio Casa", layout="wide")
+st.set_page_config(page_title="Casa App", layout="wide")
 st.title("🏠 Monitoraggio Casa")
 
-# Inizializza connessione
+# Connessione
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Sidebar
+# Elenco stanze (assicurati siano scritte uguali sul foglio!)
 stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 scelta = st.sidebar.selectbox("Scegli stanza:", stanze)
 
 try:
-    # Tentativo di lettura con refresh forzato
+    # IL SEGRETO: Usiamo ttl=0 per forzare Google a mandarci i dati freschi
     df = conn.read(worksheet=scelta, ttl=0)
     
     if df is not None:
-        st.success(f"Dati caricati per {scelta}!")
-        # Editor semplice
+        st.success(f"Caricata tab: {scelta}")
+        
+        # Pulizia nomi colonne da spazi invisibili
+        df.columns = [str(c).strip() for c in df.columns]
+        
+        # Visualizzazione e modifica
         df_edit = st.data_editor(df, use_container_width=True, hide_index=True)
         
-        if st.button("💾 SALVA"):
+        if st.button("💾 SALVA MODIFICHE"):
             conn.update(worksheet=scelta, data=df_edit)
-            st.balloons()
-            st.success("Sincronizzato!")
-            
+            st.success("Dati salvati su Google Sheets!")
+            st.rerun()
+
 except Exception as e:
-    st.error("⚠️ Errore di connessione")
-    st.write("Dettaglio errore:", e)
-    # Verifica se l'URL è quello giusto
-    if "spreadsheet" in st.secrets["connections"]["gsheets"]:
-        st.info(f"L'app sta cercando di connettersi a: {st.secrets['connections']['gsheets']['spreadsheet']}")
+    st.error("⚠️ Connessione interrotta")
+    st.info("Prova a fare 'Reboot' dal menu di Streamlit in alto a destra.")
+    st.code(str(e)) # Questo ci dice l'errore esatto
