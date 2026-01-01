@@ -14,32 +14,47 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
 # --- SEZIONE RIEPILOGO GENERALE ---
-st.markdown("### 📊 Riepilogo Generale")
-col_rip1, col_rip2 = st.columns(2)
+st.markdown("### 📊 Riepilogo Spese Confermate (S)")
+col_rip1, col_rip2, col_rip3 = st.columns(3)
 
-totale_casa = 0
+totale_confermato = 0
+totale_potenziale = 0
 dati_riepilogo = []
 
 try:
-    # Carichiamo velocemente i totali di ogni stanza
     for s in stanze:
-        temp_df = conn.read(worksheet=s, ttl=600) # cache di 10 minuti per il riepilogo
+        temp_df = conn.read(worksheet=s, ttl=600)
         if 'Prezzo' in temp_df.columns:
+            # Pulizia dati
             temp_df['Prezzo'] = pd.to_numeric(temp_df['Prezzo'], errors='coerce').fillna(0)
-            somma_stanza = temp_df['Prezzo'].sum()
-            totale_casa += somma_stanza
-            dati_riepilogo.append({"Stanza": s.capitalize(), "Spesa": somma_stanza})
+            
+            # Calcolo Potenziale (Tutto)
+            totale_potenziale += temp_df['Prezzo'].sum()
+            
+            # Calcolo Confermato (Solo righe con 'S')
+            # Assumiamo che la colonna si chiami 'S/N'. Se si chiama diversamente, cambiala qui sotto
+            colonna_filtro = 'S/N' if 'S/N' in temp_df.columns else temp_df.columns[2] # Prende la terza colonna se non trova 'S/N'
+            
+            spesa_confermata_stanza = temp_df[temp_df[colonna_filtro].str.upper() == 'S']['Prezzo'].sum()
+            totale_confermato += spesa_confermata_stanza
+            
+            dati_riepilogo.append({
+                "Stanza": s.capitalize(), 
+                "Confermato (S)": f"{spesa_confermata_stanza:,.2f} €"
+            })
 
     with col_rip1:
-        st.metric(label="TOTALE INVESTIMENTO CASA", value=f"{totale_casa:,.2f} €")
+        st.metric(label="TOTALE CONFERMATO (S)", value=f"{totale_confermato:,.2f} €")
     
     with col_rip2:
-        # Una piccola tabella di riepilogo veloce
+        st.metric(label="TOTALE POTENZIALE (S+N)", value=f"{totale_potenziale:,.2f} €", delta=f"{totale_potenziale - totale_confermato:,.2f} € da decidere", delta_color="inverse")
+
+    with col_rip3:
         df_sommario = pd.DataFrame(dati_riepilogo)
         st.dataframe(df_sommario, hide_index=True, use_container_width=True)
 
-except Exception:
-    st.info("Caricamento riepilogo in corso...")
+except Exception as e:
+    st.info("Configurazione riepilogo in corso...")
 
 st.divider()
 
@@ -48,16 +63,10 @@ selezione = st.sidebar.selectbox("Vai alla stanza specifica:", stanze)
 st.subheader(f"Dettaglio: {selezione.capitalize()}")
 
 try:
-    # Lettura dati della stanza selezionata (senza cache per permettere modifiche immediate)
     df = conn.read(worksheet=selezione, ttl=0)
     
     if df is not None:
         df.columns = [str(c).strip() for c in df.columns]
-        
-        # Calcolo totale stanza singola
-        if 'Prezzo' in df.columns:
-            df['Prezzo'] = pd.to_numeric(df['Prezzo'], errors='coerce').fillna(0)
-            st.write(f"Totale parziale {selezione}: **{df['Prezzo'].sum():,.2f} €**")
         
         # Editor dati
         df_edit = st.data_editor(
@@ -72,13 +81,9 @@ try:
         if st.button(f"💾 SALVA MODIFICHE {selezione.upper()}"):
             with st.spinner("Sincronizzazione con Google Sheets..."):
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Dati salvati! Aggiornamento in corso...")
+                st.success("Dati salvati!")
                 st.balloons()
                 st.rerun()
 
 except Exception as e:
     st.error("Errore nel caricamento dei dettagli.")
-    st.code(str(e))
-
-st.sidebar.markdown("---")
-st.sidebar.write("✅ Connessione Protetta Attiva")
