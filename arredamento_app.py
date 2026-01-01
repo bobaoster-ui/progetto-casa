@@ -64,7 +64,7 @@ if selezione == "📊 Riepilogo Casa":
         for stanza in nomi_stanze:
             try:
                 # Lettura con ttl=0 per forzare l'aggiornamento
-                df = conn.read(worksheet=stanza, ttl=0)
+                df = conn.read(worksheet=stanza)
                 if df is not None and not df.empty:
                     df = pulisci_df(df)
                     tot = df['Importo Totale'].sum()
@@ -92,7 +92,7 @@ else:
 
     try:
         # Lettura stanza specifica con ttl=0
-        df_origine = conn.read(worksheet=stanza_selezionata, ttl=0)
+        df_origine = conn.read(worksheet=stanza_selezionata)
         df_origine = pulisci_df(df_origine)
 
         # Metriche di riepilogo stanza
