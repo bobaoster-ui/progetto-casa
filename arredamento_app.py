@@ -10,58 +10,52 @@ st.set_page_config(page_title="Monitoraggio Casa Cloud", page_icon="🏠", layou
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def pulisci_df(df):
-    """Pulisce i dati e gestisce i formati numerici dei tuoi file"""
-    # Rimuove spazi bianchi dai nomi delle colonne
+    """Pulisce i dati e gestisce i formati numerici [cite: 1, 2, 3]"""
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Assicura la presenza della colonna decisionale
     if 'Acquista S/N' not in df.columns:
         df['Acquista S/N'] = "N"
 
-    # Converte i costi (gestisce formati come 6.878,22 o €360)
     cols_da_pulire = ['Costo', 'Importo Totale', 'Acquistato']
     for col in cols_da_pulire:
         if col in df.columns:
             if df[col].dtype == object:
+                # Gestisce formati come 6.878,22  o €0,00 [cite: 1]
                 df[col] = df[col].astype(str).str.replace('€', '').str.replace('.', '').str.replace(',', '.')
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-    # Ricalcola il totale per sicurezza
     df['Importo Totale'] = df['Acquistato'] * df['Costo']
     return df
 
 st.title("🏠 Monitoraggio Casa Cloud")
 
-# Nomi stanze IDENTICI alle tab di Google Sheets (in minuscolo)
+# Nomi stanze IDENTICI alle tab di Google Sheets (tutti minuscoli)
 nomi_stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
 st.sidebar.header("📍 Navigazione")
-# Nel menu appariranno con la prima lettera maiuscola per estetica
-opzioni_menu = ["📊 Riepilogo"] + [n.capitalize() for n in nomi_stanze]
-selezione = st.sidebar.selectbox("Vai a:", opzioni_menu)
+# Menu a tendina con nomi esatti per evitare confusione
+selezione = st.sidebar.selectbox("Vai a:", ["📊 Riepilogo"] + nomi_stanze)
 
 if selezione == "📊 Riepilogo":
     st.subheader("Situazione Generale Spese")
     st.info("Seleziona una stanza dal menu a sinistra per gestire i dettagli.")
 
-    # Test di connessione visibile nella sidebar
     try:
+        # Tenta di leggere la prima tab per confermare la connessione
         conn.read(worksheet="camera", ttl=0)
         st.sidebar.success("✅ Cloud Collegato!")
     except:
-        st.sidebar.error("❌ Connessione in corso...")
+        st.sidebar.warning("⏳ Collegamento in corso...")
 
 else:
-    # Converte la selezione del menu nel nome esatto della tab (minuscolo)
-    stanza_selezionata = selezione.lower()
-    st.subheader(f"Gestione: {selezione}")
+    stanza_selezionata = selezione
+    st.subheader(f"Gestione: {stanza_selezionata}")
 
     try:
         # Caricamento dati dalla tab specifica
         df_origine = conn.read(worksheet=stanza_selezionata, ttl=0)
         df_origine = pulisci_df(df_origine)
 
-        # Interfaccia di modifica dati
         df_editabile = st.data_editor(
             df_origine,
             column_config={
@@ -82,4 +76,4 @@ else:
 
     except Exception as e:
         st.error(f"Impossibile leggere la tabella '{stanza_selezionata}'.")
-        st.info("Assicurati che su Google Sheets la tab si chiami esattamente così, senza spazi.")
+        st.info("Controlla che il nome della Tab su Google Sheets sia tutto minuscolo e senza spazi.")
