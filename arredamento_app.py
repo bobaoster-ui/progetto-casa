@@ -27,7 +27,19 @@ def pulisci_df(df):
 st.title("🏠 Monitoraggio Casa Cloud")
 
 # Nomi stanze semplificati come da tua modifica su Google Sheets
-nomi_stanze = ["Camera", "Cucina", "Salotto", "Tavolo", "Lavori"]
+# Nomi stanze semplificati (usa tutto minuscolo per sicurezza)
+nomi_stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
+
+st.sidebar.header("📍 Navigazione")
+selezione = st.sidebar.selectbox("Vai a:", ["📊 Riepilogo"] + [n.capitalize() for n in nomi_stanze])
+
+if selezione != "📊 Riepilogo":
+    stanza_selezionata = selezione.lower() # Converte in minuscolo per cercare su GS
+    st.subheader(f"Gestione: {selezione}")
+
+    try:
+        # Caricamento dati
+        df_origine = conn.read(worksheet=stanza_selezionata, ttl=0)
 
 st.sidebar.header("📍 Navigazione")
 selezione = st.sidebar.selectbox("Vai a:", ["📊 Riepilogo"] + nomi_stanze)
