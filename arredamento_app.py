@@ -2,46 +2,44 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-# Configurazione base
 st.set_page_config(page_title="Monitoraggio Casa", layout="wide")
-st.title("🏠 Monitoraggio Casa - Test Diretto")
+st.title("🏠 Monitoraggio Casa - Ultimo Test")
 
-# Inizializzazione connessione
+# Connessione
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Menu semplice con i nomi esatti che hai su Google Sheets
+# Nomi stanze esatti (minuscoli come li hai messi tu)
 nomi_stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
-selezione = st.sidebar.selectbox("Seleziona una stanza:", nomi_stanze)
 
-st.write(f"Tentativo di lettura della tab: **{selezione}**")
+# Sidebar semplice
+selezione = st.sidebar.selectbox("Seleziona Stanza:", nomi_stanze)
+
+st.write(f"Stai guardando la stanza: **{selezione}**")
 
 try:
-    # IL CUORE DELLA SOLUZIONE: 
-    # Usiamo ttl=0 per ignorare la memoria vecchia (cache)
-    # Usiamo un metodo di lettura più grezzo per evitare errori di formato
+    # Lettura ultra-basica: proviamo a caricare TUTTO senza filtri
     df = conn.read(worksheet=selezione, ttl=0)
     
-    if df is not None and not df.empty:
-        st.success(f"Dati trovati per {selezione}!")
+    if df is not None:
+        # Pulizia forzata: togliamo righe e colonne completamente vuote
+        df = df.dropna(how='all').dropna(axis=1, how='all')
         
-        # Pulizia veloce dei nomi colonne
-        df.columns = [str(c).strip() for c in df.columns]
-        
-        # Mostriamo la tabella così com'è, senza filtri sui prezzi per ora
-        st.dataframe(df, use_container_width=True)
-        
-        # Se vuoi provare a modificare e salvare:
-        st.divider()
-        st.subheader("Modifica i dati")
-        df_edit = st.data_editor(df, key=f"editor_{selezione}", hide_index=True)
-        
-        if st.button("💾 SALVA SU GOOGLE SHEETS"):
-            conn.update(worksheet=selezione, data=df_edit)
-            st.success("Salvataggio inviato! Ricarica la pagina tra un istante.")
-    else:
-        st.warning(f"La tab '{selezione}' sembra essere vuota o non formattata correttamente.")
-
+        if not df.empty:
+            st.success(f"Trovate {len(df)} righe in {selezione}!")
+            # Mostriamo i dati "puri"
+            st.dataframe(df, use_container_width=True)
+            
+            # Area di modifica
+            st.subheader("Modifica Dati")
+            df_edit = st.data_editor(df, key=f"edit_{selezione}")
+            
+            if st.button("💾 SALVA"):
+                conn.update(worksheet=selezione, data=df_edit)
+                st.success("Dati inviati!")
+        else:
+            st.warning("Il foglio sembra vuoto. Scrivi qualcosa nella prima cella su Google Sheets.")
+            
 except Exception as e:
-    st.error(f"Errore durante la lettura di '{selezione}'")
-    st.code(str(e)) # Questo ci dirà l'errore tecnico esatto se fallisce
-    st.info("💡 Se vedi questo errore, prova a ricreare la tab su Google Sheets scrivendo i nomi a mano invece di incollarli.")
+    st.error(f"Errore tecnico su {selezione}")
+    # Questo ci dice se il problema è il NOME o il CONTENUTO
+    st.write("Dettaglio errore:", e)
