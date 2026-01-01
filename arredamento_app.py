@@ -1,21 +1,20 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-import plotly.express as px
 import time
 
 # Configurazione Pagina
-st.set_page_config(page_title="Monitoraggio Casa", page_icon="🏠", layout="wide")
+st.set_page_config(page_title="Monitoraggio Casa Cloud", page_icon="🏠", layout="wide")
 
 # Connessione
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def pulisci_df(df):
-    """Pulisce i dati importati dai tuoi file Arredamenti_Casa"""
+    """Pulisce i dati per uniformarli al formato richiesto"""
     df.columns = [str(c).strip() for c in df.columns]
     if 'Acquista S/N' not in df.columns: df['Acquista S/N'] = "N"
 
-    # Gestione costi e importi (dai tuoi dati: €6.878,22 etc.)
+    # Conversione numerica per i costi (gestisce il formato € e virgole)
     for col in ['Costo', 'Importo Totale', 'Acquistato']:
         if col in df.columns:
             if df[col].dtype == object:
@@ -27,7 +26,7 @@ def pulisci_df(df):
 
 st.title("🏠 Monitoraggio Casa Cloud")
 
-# Nomi esatti delle tue Tab (Verificati dai tuoi file)
+# Lista stanze identica alle Tab su Google Sheets
 nomi_stanze = [
     "Camera da Letto",
     "Tavolo e Sedie",
@@ -37,44 +36,37 @@ nomi_stanze = [
 ]
 
 st.sidebar.header("📍 Navigazione")
-selezione = st.sidebar.selectbox("Vai a:", ["📊 Riepilogo Totale"] + nomi_stanze)
+opzioni = ["📊 Riepilogo Spese"] + nomi_stanze
+selezione = st.sidebar.selectbox("Vai a:", opzioni)
 
-if selezione == "📊 Riepilogo Totale":
+if selezione == "📊 Riepilogo Spese":
     st.subheader("Situazione Generale Spese")
-    riassunto = []
-
+    # Tentativo di caricamento silenzioso per il riepilogo
+    trovati = False
     for stanza in nomi_stanze:
         try:
-            # Lettura forzata senza cache
             df = conn.read(worksheet=stanza, ttl=0)
             if df is not None:
-                df = pulisci_df(df)
-                tot = df['Importo Totale'].sum()
-                mask = df['Acquista S/N'].astype(str).str.upper().strip() == 'S'
-                speso = df[mask]['Importo Totale'].sum()
-                riassunto.append({"Stanza": stanza, "Budget": tot, "Speso": speso})
+                trovati = True
+                break
         except:
             continue
 
-    if riassunto:
-        df_r = pd.DataFrame(riassunto)
-        c1, c2 = st.columns(2)
-        c1.metric("Budget Totale", f"€ {df_r['Budget'].sum():,.2f}")
-        c2.metric("Totale Speso", f"€ {df_r['Speso'].sum():,.2f}")
-        st.plotly_chart(px.bar(df_r, x="Stanza", y=["Speso", "Budget"], barmode="group"), use_container_width=True)
+    if not trovati:
+        st.warning("In attesa di dati... Verifica che l'URL nei Secrets sia corretto e il foglio sia 'Editor'.")
     else:
-        st.warning("Nessun dato trovato. Verifica l'URL nei Secrets.")
+        st.info("Dati rilevati nel Cloud. Seleziona una stanza dal menu a sinistra.")
 
 else:
     stanza_selezionata = selezione
+    st.subheader(f"Gestione: {stanza_selezionata}")
+
     try:
-        # Tentativo di lettura della stanza specifica
+        # Caricamento della tab selezionata
         df_origine = conn.read(worksheet=stanza_selezionata, ttl=0)
         df_origine = pulisci_df(df_origine)
 
-        st.subheader(f"Gestione: {stanza_selezionata}")
-
-        # Editor interattivo
+        # Editor per modificare i dati
         df_editabile = st.data_editor(
             df_origine,
             column_config={
@@ -82,15 +74,15 @@ else:
                 "Costo": st.column_config.NumberColumn("Costo €", format="%.2f"),
                 "Importo Totale": st.column_config.NumberColumn("Totale €", format="%.2f", disabled=True)
             },
-            hide_index=True, use_container_width=True, key=f"ed_{stanza_selezionata}"
+            hide_index=True, use_container_width=True, key=f"editor_{stanza_selezionata}"
         )
 
-        if st.button("💾 SALVA MODIFICHE"):
+        if st.button("💾 SALVA MODIFICHE", use_container_width=True):
             conn.update(worksheet=stanza_selezionata, data=df_editabile)
-            st.success("Cloud Aggiornato!")
+            st.success("Dati salvati con successo!")
             time.sleep(1)
             st.rerun()
 
     except Exception as e:
-        st.error(f"Impossibile trovare la tab '{stanza_selezionata}'.")
-        st.info("Assicurati che su Google Sheets il foglio si chiami esattamente così, senza spazi prima o dopo.")
+        st.error(f"Tab '{stanza_selezionata}' non trovata o errore di connessione.")
+        st.info("Suggerimento: Verifica che il nome della Tab su Google Sheets non abbia spazi vuoti alla fine.")
