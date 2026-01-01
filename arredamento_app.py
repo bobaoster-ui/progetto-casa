@@ -9,8 +9,15 @@ import signal
 # Configurazione Pagina
 st.set_page_config(page_title="Home Decor Cloud v9.2", page_icon="🏠", layout="wide")
 
-# Connessione a Google Sheets
-conn = st.connection("gsheets", type=GSheetsConnection)
+# --- CONNESSIONE E CONTROLLO ---
+try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    # Proviamo a leggere l'elenco dei fogli disponibili per capire cosa vede l'app
+    TUTTI_I_FOGLI = conn.list_sheets()
+    st.sidebar.write("Fogli rilevati:", TUTTI_I_FOGLI)
+except Exception as e:
+    st.error(f"Errore critico di connessione: {e}")
+    st.stop()
 
 def pulisci_df(df):
     """Pulisce e converte i dati dal foglio Google"""
