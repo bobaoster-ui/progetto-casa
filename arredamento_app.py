@@ -7,26 +7,25 @@ import os
 import signal
 
 # Configurazione Pagina
-st.set_page_config(page_title="Home Decor Cloud v9.2", page_icon="🏠", layout="wide")
+st.set_page_config(page_title="Home Decor Cloud v9.3", page_icon="🏠", layout="wide")
 
-# --- CONNESSIONE E CONTROLLO ---
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    # Proviamo a leggere l'elenco dei fogli disponibili per capire cosa vede l'app
-    TUTTI_I_FOGLI = conn.list_sheets()
-    st.sidebar.write("Fogli rilevati:", TUTTI_I_FOGLI)
-except Exception as e:
-    st.error(f"Errore critico di connessione: {e}")
-    st.stop()
+# Connessione a Google Sheets
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 def pulisci_df(df):
     """Pulisce e converte i dati dal foglio Google"""
+    # Rimuove spazi bianchi dai nomi delle colonne
     df.columns = [str(c).strip() for c in df.columns]
+
     if 'Note' not in df.columns: df['Note'] = ""
     if 'Acquista S/N' not in df.columns: df['Acquista S/N'] = "N"
 
+    # Conversione numeri (gestisce virgole e formati da Sheets)
     for col in ['Acquistato', 'Costo', 'Importo Totale']:
         if col in df.columns:
+            # Sostituisce la virgola con il punto per i decimali se necessario
+            if df[col].dtype == object:
+                df[col] = df[col].str.replace('€', '').str.replace('.', '').str.replace(',', '.')
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
     df['Importo Totale'] = df['Acquistato'] * df['Costo']
@@ -35,7 +34,7 @@ def pulisci_df(df):
 # --- INTERFACCIA ---
 st.title("🏠 Monitoraggio Casa Cloud")
 
-# LISTA STANZE CORRETTA
+# Lista stanze corrispondente alle Tab di Google Sheets
 nomi_stanze = [
     "Camera da Letto",
     "Tavolo e Sedie",
@@ -61,9 +60,10 @@ if selezione == "📊 Riepilogo Casa":
     st.subheader("Riepilogo Spese Totale")
     riassunto = []
 
-    with st.spinner("Sincronizzazione Cloud..."):
+    with st.spinner("Sincronizzazione Cloud in corso..."):
         for stanza in nomi_stanze:
             try:
+                # Lettura con ttl=0 per forzare l'aggiornamento
                 df = conn.read(worksheet=stanza, ttl=0)
                 if df is not None and not df.empty:
                     df = pulisci_df(df)
@@ -71,7 +71,7 @@ if selezione == "📊 Riepilogo Casa":
                     mask = df['Acquista S/N'].str.upper().str.strip() == 'S'
                     speso = df[mask]['Importo Totale'].sum()
                     riassunto.append({"Stanza": stanza, "Budget": tot, "Speso": speso, "Mancante": tot-speso})
-            except:
+            except Exception:
                 continue
 
     if riassunto:
@@ -83,28 +83,29 @@ if selezione == "📊 Riepilogo Casa":
 
         st.plotly_chart(px.bar(df_riepilogo, x="Stanza", y=["Speso", "Mancante"], barmode="stack",
                                color_discrete_map={"Speso": "#2ecc71", "Mancante": "#e74c3c"}), use_container_width=True)
+    else:
+        st.warning("In attesa di dati... Verifica la connessione nei Secrets.")
 
 else:
     stanza_selezionata = selezione
     st.subheader(f"Gestione: {stanza_selezionata}")
 
     try:
+        # Lettura stanza specifica con ttl=0
         df_origine = conn.read(worksheet=stanza_selezionata, ttl=0)
         df_origine = pulisci_df(df_origine)
-    except Exception as e:
-        st.error(f"Errore di connessione a Google Sheets: {e}")
-        st.info("Prova a controllare se l'URL nei Secrets è corretto e se il foglio è condiviso come 'Editor'.")
-        st.stop()
 
+        # Metriche di riepilogo stanza
         tot_st = df_origine['Importo Totale'].sum()
         mask_s = df_origine['Acquista S/N'].str.upper().str.strip() == 'S'
         speso_st = df_origine[mask_s]['Importo Totale'].sum()
 
         m1, m2, m3 = st.columns(3)
-        m1.metric("Budget", f"€ {tot_st:,.2f}")
-        m2.metric("Speso", f"€ {speso_st:,.2f}")
+        m1.metric("Budget Previsto", f"€ {tot_st:,.2f}")
+        m2.metric("Spesa Effettuata", f"€ {speso_st:,.2f}")
         m3.metric("Residuo", f"€ {tot_st - speso_st:,.2f}")
 
+        # Editor dati
         df_editabile = st.data_editor(
             df_origine,
             column_config={
@@ -113,15 +114,16 @@ else:
                 "Importo Totale": st.column_config.NumberColumn("Totale (€)", format="€ %.2f", disabled=True),
             },
             disabled=["Articolo", "Importo Totale"],
-            hide_index=True, use_container_width=True, key=f"ed_{stanza_selezionata}"
+            hide_index=True, use_container_width=True, key=f"editor_{stanza_selezionata}"
         )
 
         if st.button("💾 SALVA MODIFICHE", use_container_width=True, type="primary"):
             df_editabile['Importo Totale'] = df_editabile['Acquistato'] * df_editabile['Costo']
             conn.update(worksheet=stanza_selezionata, data=df_editabile)
-            st.success("Sincronizzato!")
+            st.success("Dati sincronizzati con Google Sheets!")
             time.sleep(1)
             st.rerun()
 
-    except Exception:
-        st.error(f"Tab '{stanza_selezionata}' non trovata. Controlla il nome su Google Sheets.")
+    except Exception as e:
+        st.error(f"Tab '{stanza_selezionata}' non trovata o errore di connessione.")
+        st.info("Verifica che il nome della Tab su Google Sheets sia identico e che l'URL nei Secrets sia corretto.")
