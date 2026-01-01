@@ -1,88 +1,49 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-import time
 
-# Configurazione Pagina
-st.set_page_config(page_title="Monitoraggio Casa Cloud", page_icon="🏠", layout="wide")
+st.set_page_config(page_title="Monitoraggio Casa", layout="wide")
+st.title("🏠 Monitoraggio Casa Cloud")
 
 # Connessione
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def pulisci_df(df):
-    """Pulisce i dati per uniformarli al formato richiesto"""
-    df.columns = [str(c).strip() for c in df.columns]
-    if 'Acquista S/N' not in df.columns: df['Acquista S/N'] = "N"
+# 1. TEST DI CONNESSIONE: Proviamo a leggere il foglio senza specificare il nome
+try:
+    # Se non mettiamo worksheet, legge il primo foglio disponibile
+    df_test = conn.read(ttl=0)
+    st.sidebar.success("✅ Connessione stabilita!")
+except Exception as e:
+    st.sidebar.error("❌ Errore di connessione")
+    st.error(f"L'app non riesce a raggiungere Google Sheets. Errore: {e}")
+    st.stop()
 
-    # Conversione numerica per i costi (gestisce il formato € e virgole)
+# 2. FUNZIONE DI PULIZIA DATI (Basata sui tuoi file reali)
+def pulisci_dati(df):
+    df.columns = [str(c).strip() for c in df.columns]
+    # Gestione numeri (es. 6878,22 della cucina o 360 del letto)
     for col in ['Costo', 'Importo Totale', 'Acquistato']:
         if col in df.columns:
-            if df[col].dtype == object:
-                df[col] = df[col].astype(str).str.replace('€', '').str.replace('.', '').str.replace(',', '.')
+            df[col] = df[col].astype(str).str.replace('€', '').str.replace('.', '').str.replace(',', '.')
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-
-    df['Importo Totale'] = df['Acquistato'] * df['Costo']
     return df
 
-st.title("🏠 Monitoraggio Casa Cloud")
+# 3. MENU NAVIGAZIONE
+nomi_stanze = ["Camera da Letto", "Tavolo e Sedie", "Salotto", "Cucina", "Attività Muratore, Idraulico et"]
+selezione = st.sidebar.selectbox("Seleziona Stanza:", nomi_stanze)
 
-# Lista stanze identica alle Tab su Google Sheets
-nomi_stanze = [
-    "Camera da Letto",
-    "Tavolo e Sedie",
-    "Salotto",
-    "Cucina",
-    "Attività Muratore, Idraulico et"
-]
+# 4. CARICAMENTO DATI
+try:
+    # Cerchiamo di caricare la tab selezionata
+    df = conn.read(worksheet=selezione, ttl=0)
+    df = pulisci_dati(df)
 
-st.sidebar.header("📍 Navigazione")
-opzioni = ["📊 Riepilogo Spese"] + nomi_stanze
-selezione = st.sidebar.selectbox("Vai a:", opzioni)
+    st.subheader(f"Dettaglio: {selezione}")
 
-if selezione == "📊 Riepilogo Spese":
-    st.subheader("Situazione Generale Spese")
-    # Tentativo di caricamento silenzioso per il riepilogo
-    trovati = False
-    for stanza in nomi_stanze:
-        try:
-            df = conn.read(worksheet=stanza, ttl=0)
-            if df is not None:
-                trovati = True
-                break
-        except:
-            continue
+    # Mostriamo i dati che abbiamo nei tuoi file
+    # Ad esempio il Letto contenitore a 360€ o il Tavolo a 174€
+    st.data_editor(df, use_container_width=True, hide_index=True)
 
-    if not trovati:
-        st.warning("In attesa di dati... Verifica che l'URL nei Secrets sia corretto e il foglio sia 'Editor'.")
-    else:
-        st.info("Dati rilevati nel Cloud. Seleziona una stanza dal menu a sinistra.")
-
-else:
-    stanza_selezionata = selezione
-    st.subheader(f"Gestione: {stanza_selezionata}")
-
-    try:
-        # Caricamento della tab selezionata
-        df_origine = conn.read(worksheet=stanza_selezionata, ttl=0)
-        df_origine = pulisci_df(df_origine)
-
-        # Editor per modificare i dati
-        df_editabile = st.data_editor(
-            df_origine,
-            column_config={
-                "Acquista S/N": st.column_config.SelectboxColumn("Acquista", options=["S", "N"]),
-                "Costo": st.column_config.NumberColumn("Costo €", format="%.2f"),
-                "Importo Totale": st.column_config.NumberColumn("Totale €", format="%.2f", disabled=True)
-            },
-            hide_index=True, use_container_width=True, key=f"editor_{stanza_selezionata}"
-        )
-
-        if st.button("💾 SALVA MODIFICHE", use_container_width=True):
-            conn.update(worksheet=stanza_selezionata, data=df_editabile)
-            st.success("Dati salvati con successo!")
-            time.sleep(1)
-            st.rerun()
-
-    except Exception as e:
-        st.error(f"Tab '{stanza_selezionata}' non trovata o errore di connessione.")
-        st.info("Suggerimento: Verifica che il nome della Tab su Google Sheets non abbia spazi vuoti alla fine.")
+except Exception as e:
+    st.error(f"Non trovo la tab '{selezione}' su Google Sheets.")
+    st.info("⚠️ CONTROLLO FINALE: Vai su Google Sheets, rinomina la tab scrivendo 'Test' e prova a cambiare il nome nel codice in 'Test'. Se funziona, i nomi originali hanno caratteri invisibili.")
