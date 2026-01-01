@@ -56,9 +56,26 @@ with st.sidebar.expander("🛠️ Impostazioni Avanzate"):
 
 # --- LOGICA PAGINE ---
 
+
+# --- LOGICA PAGINE MODIFICATA ---
+
 if selezione == "📊 Riepilogo Casa":
     st.subheader("Riepilogo Spese Totale")
     riassunto = []
+
+    for stanza in nomi_stanze:
+        try:
+            # Forziamo la lettura ignorando la cache
+            df = conn.read(worksheet=stanza, ttl=0)
+            if df is not None:
+                df = pulisci_df(df)
+                # Calcoliamo i totali per il grafico
+                tot = df['Importo Totale'].sum()
+                mask = df['Acquista S/N'].astype(str).str.upper().str.strip() == 'S'
+                speso = df[mask]['Importo Totale'].sum()
+                riassunto.append({"Stanza": stanza, "Budget": tot, "Speso": speso})
+        except Exception:
+            continue # Salta silenziosamente se una tab non viene trovata
 
     with st.spinner("Sincronizzazione Cloud in corso..."):
         for stanza in nomi_stanze:
