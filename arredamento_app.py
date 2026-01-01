@@ -5,8 +5,9 @@ import os
 import time
 import signal
 
-st.set_page_config(page_title="Home Decor Master v8.1", page_icon="🏠", layout="wide")
+st.set_page_config(page_title="Home Decor Master v8.2", page_icon="🏠", layout="wide")
 
+# --- FUNZIONE CARICAMENTO DATI ---
 def carica_dati(file):
     if os.path.exists(file):
         dict_fogli = pd.read_excel(file, sheet_name=None)
@@ -34,15 +35,23 @@ if fogli:
     nomi_stanze = list(fogli.keys())
     opzioni_menu = ["🏠 HOME - Riepilogo Casa"] + nomi_stanze
 
+    # --- SIDEBAR ---
     st.sidebar.header("📍 Navigazione")
     selezione = st.sidebar.selectbox("Vai a:", opzioni_menu)
 
     st.sidebar.write("---")
-    if st.sidebar.button("🛑 CHIUDI APPLICAZIONE", use_container_width=True, type="primary"):
-        st.sidebar.warning("Sessione terminata.")
-        time.sleep(1)
-        os.kill(os.getpid(), signal.SIGINT)
 
+    # --- TRUCCO PER IL TASTO CHIUDI ---
+    # Usiamo un expander o una checkbox per "proteggere" il tasto
+    with st.sidebar.expander("🛠️ Impostazioni Avanzate"):
+        abilita_chiusura = st.checkbox("Abilita tasto spegnimento")
+        if abilita_chiusura:
+            if st.button("🛑 CHIUDI APPLICAZIONE", use_container_width=True, type="primary"):
+                st.warning("Sessione terminata. Se sei sul Cloud, dovrai fare il REBOOT dal dashboard.")
+                time.sleep(2)
+                os.kill(os.getpid(), signal.SIGINT)
+
+    # --- LOGICA PAGINE (HOME / STANZE) ---
     if selezione == "🏠 HOME - Riepilogo Casa":
         st.title("📊 Riepilogo Spese Tutta Casa")
         riassunto = []
@@ -67,16 +76,15 @@ if fogli:
         df_origine = fogli[stanza_selezionata].copy()
         st.title(f"🏠 Stanza: {stanza_selezionata}")
 
-        # --- CALCOLO TOTALI STANZA (Prima di visualizzare) ---
+        # Totali Stanza sempre visibili
         tot_st = df_origine['Importo Totale'].sum()
         mask_s = df_origine['Acquista S/N'].str.upper().str.strip() == 'S'
         speso_st = df_origine[mask_s]['Importo Totale'].sum()
 
-        # Visualizzazione metriche in alto per visibilità immediata
         m1, m2, m3 = st.columns(3)
         m1.metric(f"Totale {stanza_selezionata}", f"€ {tot_st:,.2f}")
-        m2.metric("Già Comprato", f"€ {speso_st:,.2f}")
-        m3.metric("Rimanente", f"€ {tot_st - speso_st:,.2f}")
+        m2.metric("Acquistato", f"€ {speso_st:,.2f}")
+        m3.metric("Da spendere", f"€ {tot_st - speso_st:,.2f}")
         st.write("---")
 
         tab_lista, tab_grafici = st.tabs(["📋 Lista e Modifica", "📊 Grafici"])
@@ -84,7 +92,7 @@ if fogli:
         with tab_lista:
             with st.expander("➕ Aggiungi nuovo articolo"):
                 new_art = st.text_input("Nome nuovo articolo")
-                if st.button("Inserisci in lista"):
+                if st.button("Inserisci"):
                     if new_art:
                         nuova_riga = pd.DataFrame([{"Articolo": new_art, "Acquistato": 1, "Costo": 0, "Importo Totale": 0, "Acquista S/N": "N", "Note": ""}])
                         df_nuovo = pd.concat([df_origine, nuova_riga], ignore_index=True)
@@ -101,14 +109,14 @@ if fogli:
                     "Note": st.column_config.TextColumn("Note")
                 },
                 disabled=["Articolo", "Importo Totale"],
-                hide_index=True, use_container_width=True, key=f"v81_{stanza_selezionata}"
+                hide_index=True, use_container_width=True, key=f"v82_{stanza_selezionata}"
             )
 
             if st.button("💾 SALVA MODIFICHE", use_container_width=True):
                 df_editabile['Importo Totale'] = df_editabile['Acquistato'] * df_editabile['Costo']
                 with pd.ExcelWriter(FILE_EXCEL, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
                     df_editabile.to_excel(writer, sheet_name=stanza_selezionata, index=False)
-                st.success("Dati salvati!")
+                st.success("Dati salvati con successo!")
                 time.sleep(1)
                 st.rerun()
 
