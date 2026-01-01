@@ -1,49 +1,71 @@
 import streamlit as st
-import pandas as pd
 from streamlit_gsheets import GSheetsConnection
+import pandas as pd
 
-st.set_page_config(page_title="Monitoraggio Casa", layout="wide")
-st.title("🏠 Monitoraggio Casa")
+# Configurazione Pagina
+st.set_page_config(page_title="Monitoraggio Arredamento Casa", layout="wide")
 
-# 1. Configurazione Connessione
-# Aggiungiamo un parametro per forzare l'autenticazione se necessaria
+# Funzione per applicare i colori alle celle
+def colora_celle(val):
+    if isinstance(val, str) and '✅' in val:
+        return 'background-color: #d4edda; color: #155724'
+    elif isinstance(val, str) and '⚠️' in val:
+        return 'background-color: #fff3cd; color: #856404'
+    return ''
+
+st.title("🏠 Monitoraggio Spese Arredamento")
+st.markdown("Modifica i prezzi o lo stato e clicca su **Salva** in fondo alla pagina.")
+
+# Connessione (usa i Secrets che abbiamo appena configurato)
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 2. URL per la lettura veloce (che funziona!)
-URL_BASE = "https://docs.google.com/spreadsheets/d/1O__ZbkbxowCxyfk_Wg0VYv2QoCNHHSfezw6bRLjMqRU/gviz/tq?tqx=out:csv"
-
+# Menu laterale per le stanze
 stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
-scelta = st.sidebar.selectbox("Seleziona la stanza:", stanze)
-
-def carica_dati(nome_tab):
-    url = f"{URL_BASE}&sheet={nome_tab}"
-    return pd.read_csv(url)
+selezione = st.sidebar.selectbox("Vai alla stanza:", stanze)
 
 try:
-    df = carica_dati(scelta)
+    # Lettura dati
+    df = conn.read(worksheet=selezione, ttl=0)
     
     if df is not None:
-        st.success(f"Dati di '{scelta}' pronti")
-        
+        # Pulizia nomi colonne
         df.columns = [str(c).strip() for c in df.columns]
         
-        # Editor
-        df_edit = st.data_editor(df, use_container_width=True, hide_index=True, key=f"ed_{scelta}")
+        # --- CALCOLI ---
+        if 'Prezzo' in df.columns:
+            # Assicuriamoci che i prezzi siano numeri
+            df['Prezzo'] = pd.to_numeric(df['Prezzo'], errors='coerce').fillna(0)
+            totale = df['Prezzo'].sum()
+            
+            # Layout a colonne per i totali
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric(label=f"Totale {selezione.capitalize()}", value=f"{totale:,.2f} €")
         
         st.divider()
-        
-        if st.button(f"💾 SALVA MODIFICHE IN {scelta.upper()}"):
-            with st.spinner("Tentativo di salvataggio..."):
-                try:
-                    # TENTATIVO DI SALVATAGGIO
-                    conn.update(worksheet=scelta, data=df_edit)
-                    st.success("✅ Salvataggio riuscito!")
-                    st.balloons()
-                except Exception as e_save:
-                    st.error("Errore di permessi Google")
-                    st.write("Google richiede un'autenticazione privata per scrivere.")
-                    st.info("💡 Roberto, se questo fallisce, dobbiamo attivare una 'API Key' su Google Cloud, o usare un trucco diverso.")
-                    st.code(str(e_save))
+
+        # --- EDITOR DATI ---
+        # Usiamo una key dinamica per non confondere la cache
+        df_edit = st.data_editor(
+            df, 
+            use_container_width=True, 
+            hide_index=True, 
+            key=f"editor_{selezione}",
+            num_rows="dynamic" # Ti permette di aggiungere righe se serve
+        )
+
+        st.divider()
+
+        # --- TASTO SALVA ---
+        if st.button(f"💾 SALVA MODIFICHE {selezione.upper()}"):
+            with st.spinner("Sincronizzazione con Google Sheets..."):
+                conn.update(worksheet=selezione, data=df_edit)
+                st.success("Dati salvati con successo!")
+                st.balloons()
+                st.rerun()
 
 except Exception as e:
-    st.error(f"Errore: {e}")
+    st.error("C'è stato un problema nel caricamento dei dati.")
+    st.code(str(e))
+
+st.sidebar.info("L'app è ora connessa in modo sicuro tramite Service Account.")
