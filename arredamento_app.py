@@ -1,44 +1,39 @@
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-st.set_page_config(page_title="Casa App", layout="wide")
+st.set_page_config(page_title="Monitoraggio Casa", layout="wide")
 st.title("🏠 Monitoraggio Casa")
 
-# Recupero URL dai Secrets
-try:
-    url = st.secrets["connections"]["gsheets"]["spreadsheet"]
-    # Pulizia URL per sicurezza
-    url = url.replace("/edit", "/export?format=csv")
-except:
-    st.error("URL non trovato nei Secrets!")
-    st.stop()
+# Inizializziamo la connessione ufficiale (quella che permette di salvare)
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 # Menu Stanze
 stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 scelta = st.sidebar.selectbox("Scegli stanza:", stanze)
 
-# Funzione di lettura "Forzata"
-@st.cache_data(ttl=0)
-def carica_dati(sheet_url, nome_tab):
-    # Costruisce l'URL diretto per la singola tab
-    final_url = f"{sheet_url}&sheet={nome_tab}"
-    return pd.read_csv(final_url)
+# Mostra un messaggio di caricamento
+st.write(f"Stai visualizzando: **{scelta}**")
 
 try:
-    df = carica_dati(url, scelta)
+    # Usiamo ttl=0 per forzare Streamlit a cambiare dati quando cambi stanza
+    df = conn.read(worksheet=scelta, ttl=0)
     
-    if df is not None:
-        st.success(f"✅ Tab '{scelta}' caricata con successo!")
-        
-        # Pulizia colonne
+    if df is not None and not df.empty:
+        # Pulizia veloce delle colonne
         df.columns = [str(c).strip() for c in df.columns]
         
-        # Editor
-        st.data_editor(df, use_container_width=True, hide_index=True)
+        # Tabella editabile
+        # Il key=scelta è FONDAMENTALE per dire a Streamlit di cambiare tabella
+        df_edit = st.data_editor(df, use_container_width=True, hide_index=True, key=f"editor_{scelta}")
         
-        st.info("💡 Nota: In questa modalità 'Direct Read', il tasto Salva è disabilitato per testare la lettura. Se vedi i dati, ripristiniamo il salvataggio al prossimo passo!")
+        if st.button("💾 SALVA MODIFICHE SU CLOUD"):
+            conn.update(worksheet=scelta, data=df_edit)
+            st.success(f"Dati di '{scelta}' aggiornati correttamente!")
+            st.balloons()
+    else:
+        st.warning(f"La tab '{scelta}' sembra vuota su Google Sheets.")
 
 except Exception as e:
-    st.error("⚠️ Errore di lettura")
+    st.error(f"⚠️ Errore nel caricamento della tab '{scelta}'")
     st.code(str(e))
-    st.warning("Se vedi ancora 400, vai su Google Sheets -> Condividi -> Assicurati che sia 'Chiunque abbia il link' + 'Editor'")
