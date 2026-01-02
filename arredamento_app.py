@@ -7,7 +7,7 @@ from datetime import datetime
 from fpdf import FPDF
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento v2.9", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento v3.0", layout="wide", page_icon="🏠")
 
 # --- CLASSE PER IL PDF ---
 class PDF(FPDF):
@@ -73,8 +73,6 @@ if check_password():
                         df_s[col_p] = pd.to_numeric(df_s[col_p], errors='coerce').fillna(0)
                         spesa_stanza_totale = df_s[col_p].sum()
                         tot_potenziale += spesa_stanza_totale
-
-                        # Dati per il grafico (sempre presenti, S + N)
                         dati_per_grafico_totale.append({"Stanza": s.capitalize(), "Budget": spesa_stanza_totale})
 
                         if col_s:
@@ -90,26 +88,22 @@ if check_password():
                                 lista_solo_confermati.append(temp_df)
             except: continue
 
-        # Visualizzazione Metriche
         m1, m2, m3 = st.columns(3)
         m1.metric("CONFERMATO (S)", f"{tot_conf:,.2f} EUR")
         m2.metric("DA DECIDERE (N)", f"{(tot_potenziale - tot_conf):,.2f} EUR")
         m3.metric("BUDGET TOTALE (S+N)", f"{tot_potenziale:,.2f} EUR")
 
-        # GRAFICI (Sempre visibili se ci sono dati)
         if dati_per_grafico_totale:
             st.write("### 📊 Analisi Budget per Stanza (S + N)")
             df_plot = pd.DataFrame(dati_per_grafico_totale)
             fig = px.bar(df_plot, x='Stanza', y='Budget', color='Stanza', title="Potenziale di spesa totale")
             st.plotly_chart(fig, use_container_width=True)
 
-        # TABELLA E PDF (Solo se ci sono "S")
         if lista_solo_confermati:
             st.write("### 📋 Dettaglio Acquisti Confermati (S)")
             df_final = pd.concat(lista_solo_confermati)
             st.dataframe(df_final, use_container_width=True, hide_index=True)
 
-            # Export PDF
             pdf = PDF()
             pdf.add_page()
             pdf.set_font("Arial", 'B', 12)
@@ -129,10 +123,9 @@ if check_password():
             pdf_output = pdf.output()
             st.download_button("📄 Scarica Report PDF (Solo S)", data=bytes(pdf_output), file_name="Report_Jacopo.pdf")
         else:
-            st.info("💡 Suggerimento: Per generare il PDF e la tabella di dettaglio, imposta 'S' nella colonna Acquista delle singole stanze.")
+            st.info("💡 Imposta 'S' nelle stanze per vedere qui il dettaglio e scaricare il PDF.")
 
     else:
-        # STANZA SINGOLA (Codice invariato e stabile)
         st.subheader(f"Ambiente: {selezione.capitalize()}")
         try:
             df = conn.read(worksheet=selezione, ttl=0)
@@ -140,10 +133,15 @@ if check_password():
                 df.columns = [str(c).strip() for c in df.columns]
                 col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
                 config = {col_s: st.column_config.SelectboxColumn("Acquista?", options=["S", "N"])} if col_s else {}
+
                 df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, key=f"ed_{selezione}")
-                if st.button(f"💾 SALVA {selezione.upper()}"):
-                    conn.update(worksheet=selezione, data=df_edit)
-                    st.success("Dati salvati!")
-                    st.rerun()
+
+                # Feedback di salvataggio migliorato
+                if st.button(f"💾 SALVA MODIFICHE {selezione.upper()}"):
+                    with st.spinner("Invio dati a Google Sheets..."):
+                        conn.update(worksheet=selezione, data=df_edit)
+                    st.success(f"✅ Ottimo! Le modifiche per '{selezione.capitalize()}' sono state salvate correttamente.")
+                    if st.button("Aggiorna vista 🔄"):
+                        st.rerun()
         except Exception as e:
-            st.error(f"Errore: {e}")
+            st.error(f"Errore nel caricamento: {e}")
