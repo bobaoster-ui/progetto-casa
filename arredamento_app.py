@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V5.9", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V6.0", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
@@ -106,6 +106,7 @@ else:
             st.plotly_chart(fig, use_container_width=True)
 
         if lista_solo_confermati:
+            st.subheader("Dettaglio Acquisti")
             df_final = pd.concat(lista_solo_confermati)
             st.dataframe(df_final, use_container_width=True, hide_index=True)
 
@@ -131,7 +132,7 @@ else:
                 "Prezzo Stimato": st.column_config.NumberColumn("Budget €", format="%.2f"),
             }
 
-            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v5_9")
+            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v6")
 
             if st.button("💾 SALVA WISHLIST"):
                 with st.spinner("Salvataggio..."):
@@ -142,7 +143,7 @@ else:
                     time.sleep(1)
                     st.rerun()
 
-    # --- 3. STANZE (Logica Quantità Decimale e Costo Manuale/Calcolato) ---
+    # --- 3. STANZE (Logica Ricalcolo Immediata) ---
     else:
         st.title(f"🏠 {selezione.capitalize()}")
         df = conn.read(worksheet=selezione, ttl="5s")
@@ -158,7 +159,7 @@ else:
                 col_s: st.column_config.SelectboxColumn("Scelta", options=["S", "N"]),
                 "Prezzo Pieno": st.column_config.NumberColumn("Listino €", format="%.2f"),
                 "Sconto %": st.column_config.NumberColumn("Sconto %"),
-                "Costo": st.column_config.NumberColumn("Costo Unit. €", format="%.2f", help="Puoi inserirlo a mano o farlo calcolare dallo sconto"),
+                "Costo": st.column_config.NumberColumn("Costo Unit. €", format="%.2f"),
                 "Acquistato": st.column_config.NumberColumn("Quantità", format="%.2f", min_value=0.0, step=0.1),
                 "Importo Totale": st.column_config.NumberColumn("Importo Totale €", format="%.2f", disabled=True),
                 "Note": st.column_config.TextColumn("Note", width="large")
@@ -167,23 +168,28 @@ else:
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_stanza, key=f"ed_{selezione}")
 
             if st.button("💾 SALVA E RICALCOLA"):
-                with st.spinner("Aggiornamento totali..."):
-                    # 1. Conversione in numeri
-                    pp = pd.to_numeric(df_edit['Prezzo Pieno'], errors='coerce').fillna(0)
-                    sc = pd.to_numeric(df_edit['Sconto %'], errors='coerce').fillna(0)
-                    ac = pd.to_numeric(df_edit['Acquistato'], errors='coerce').fillna(0)
-                    cu = pd.to_numeric(df_edit['Costo'], errors='coerce').fillna(0)
+                with st.spinner("Aggiornamento in corso..."):
+                    # Trasformazione dati per il calcolo
+                    df_edit['Prezzo Pieno'] = pd.to_numeric(df_edit['Prezzo Pieno'], errors='coerce').fillna(0)
+                    df_edit['Sconto %'] = pd.to_numeric(df_edit['Sconto %'], errors='coerce').fillna(0)
+                    df_edit['Acquistato'] = pd.to_numeric(df_edit['Acquistato'], errors='coerce').fillna(0)
+                    df_edit['Costo'] = pd.to_numeric(df_edit['Costo'], errors='coerce').fillna(0)
 
-                    # 2. Logica Costo: se PP e SC sono presenti, ricalcola CU, altrimenti tieni CU attuale
+                    # LOGICA RICALCOLO IMMEDIATO
                     for i in range(len(df_edit)):
-                        if pp[i] > 0 and sc[i] > 0:
-                            df_edit.at[i, 'Costo'] = pp[i] * (1 - (sc[i] / 100))
+                        # Se ha inserito listino e sconto, ricalcola il costo unitario
+                        if df_edit.at[i, 'Prezzo Pieno'] > 0 and df_edit.at[i, 'Sconto %'] > 0:
+                            df_edit.at[i, 'Costo'] = df_edit.at[i, 'Prezzo Pieno'] * (1 - (df_edit.at[i, 'Sconto %'] / 100))
 
-                    # 3. Logica Importo Totale: Costo * Acquistato (Sempre rifatto)
-                    df_edit['Importo Totale'] = df_edit['Costo'] * df_edit['Acquistato']
+                        # Calcola sempre l'Importo Totale
+                        df_edit.at[i, 'Importo Totale'] = df_edit.at[i, 'Costo'] * df_edit.at[i, 'Acquistato']
+
+                    # Rimuovo colonne obsolete se presenti nel dataframe prima di inviare a Sheets
+                    if 'Prezzo Finale' in df_edit.columns:
+                        df_edit = df_edit.drop(columns=['Prezzo Finale'])
 
                     conn.update(worksheet=selezione, data=df_edit)
                     st.balloons()
-                    st.success("Salvataggio e ricalcolo completati!")
-                    time.sleep(1.5)
+                    st.success("Tutto aggiornato!")
+                    time.sleep(1)
                     st.rerun()
