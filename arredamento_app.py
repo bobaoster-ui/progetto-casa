@@ -6,7 +6,7 @@ from datetime import datetime
 from fpdf import FPDF
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento RC 1.2", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V4.1", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
@@ -20,7 +20,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 20, 'REPORT SPESE ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 11)
-        # Regola: Proprietà con à
+        # Rispetto istruzione: Proprietà con à
         testo_header = f'Proprietà: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo_header.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -59,7 +59,7 @@ else:
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
     selezione = st.sidebar.selectbox("Menu Principale:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
 
-    # --- RIEPILOGO ---
+    # --- 1. RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
         lista_solo_confermati = []
@@ -107,51 +107,68 @@ else:
 
             pdf = PDF()
             pdf.add_page()
-            # Logica PDF... (omessa qui per brevità ma presente nel tuo file finale)
+            pdf.set_font("Arial", 'B', 10)
+            pdf.cell(40, 10, 'Ambiente', 1)
+            pdf.cell(100, 10, 'Oggetto', 1)
+            pdf.cell(50, 10, 'Importo (EUR)', 1, 1)
+            pdf.set_font("Arial", '', 9)
+            for _, row in df_final.iterrows():
+                ogg = str(row['Oggetto']).encode('latin-1', 'ignore').decode('latin-1')
+                pdf.cell(40, 8, str(row['Ambiente']), 1)
+                pdf.cell(100, 8, ogg[:50], 1)
+                pdf.cell(50, 8, f"{row['Importo']:,.2f}", 1, 1, 'R')
             st.download_button("📄 Scarica Report PDF", data=bytes(pdf.output()), file_name="Report_Arredamento.pdf")
 
-# --- 2. WISHLIST VISUALE (Puntando a 'desideri') ---
+    # --- 2. WISHLIST (Puntando a 'desideri') ---
     elif selezione == "✨ Wishlist":
         st.title("✨ La Tua Wishlist Visiva")
-        st.info("Incolla l'indirizzo di un'immagine nella colonna 'Foto' per vedere l'anteprima!")
+        st.info("Incolla l'URL dell'immagine nella colonna 'Foto'. Dopo aver salvato, vedrai la galleria in basso!")
 
         try:
-            # Leggiamo il foglio 'desideri'
-            df_wish = conn.read(worksheet="desideri", ttl=20)
+            df_wish = conn.read(worksheet="desideri", ttl=30)
+            if df_wish is None or df_wish.empty:
+                df_wish = pd.DataFrame(columns=['Oggetto', 'Foto', 'Link', 'Prezzo Stimato', 'Note'])
 
-            if df_wish is not None:
-                # Pulizia nomi colonne per sicurezza
-                df_wish.columns = [str(c).strip() for c in df_wish.columns]
+            # Pulizia nomi colonne
+            df_wish.columns = [str(c).strip() for c in df_wish.columns]
 
-                # CONFIGURAZIONE COLONNE (La magia è qui!)
-                config_wish = {
-                    "Foto": st.column_config.ImageColumn("Anteprima", help="Anteprima dell'oggetto"),
-                    "Link": st.column_config.LinkColumn("🔗 Link Sito"),
-                    "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f EUR"),
-                    "Oggetto": st.column_config.TextColumn("Cosa ti piace?", width="medium"),
-                    "Note": st.column_config.TextColumn("Dettagli", width="large")
-                }
+            config_wish = {
+                "Foto": st.column_config.TextColumn("🔗 URL Foto", help="Fai doppio clic per incollare il link immagine"),
+                "Link": st.column_config.LinkColumn("🔗 Link Sito"),
+                "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f"),
+                "Oggetto": st.column_config.TextColumn("Nome Oggetto"),
+                "Note": st.column_config.TextColumn("Dettagli")
+            }
 
-                # Visualizzazione con Data Editor
-                df_edit_wish = st.data_editor(
-                    df_wish,
-                    use_container_width=True,
-                    hide_index=True,
-                    num_rows="dynamic",
-                    column_config=config_wish,
-                    key="wish_visual_v4"
-                )
+            df_edit_wish = st.data_editor(df_wish, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v4_1")
 
-                if st.button("💾 SALVA MODIFICHE VISUALI"):
-                    with st.spinner("Aggiornamento catalogo..."):
-                        conn.update(worksheet="desideri", data=df_edit_wish)
-                    st.success("Catalogo sogni aggiornato!")
-                    st.balloons()
+            if st.button("💾 SALVA MODIFICHE"):
+                with st.spinner("Salvataggio..."):
+                    conn.update(worksheet="desideri", data=df_edit_wish)
+                st.success("Catalogo aggiornato!")
+                st.rerun() # Ricarichiamo per aggiornare la galleria
+
+            # --- GALLERIA FOTOGRAFICA ---
+            st.markdown("---")
+            st.subheader("🖼️ Galleria dei Desideri")
+            # Consideriamo valide le righe che hanno un link che inizia con http nella colonna Foto
+            foto_validi = df_edit_wish[df_edit_wish['Foto'].astype(str).str.startswith('http', na=False)]
+
+            if not foto_validi.empty:
+                cols = st.columns(4)
+                for i, row in enumerate(foto_validi.itertuples()):
+                    with cols[i % 4]:
+                        try:
+                            st.image(row.Foto, caption=f"{row.Oggetto} ({row._4}€)", use_container_width=True)
+                        except:
+                            st.caption(f"⚠️ Immagine non caricabile per: {row.Oggetto}")
+            else:
+                st.write("Nessuna foto disponibile. Aggiungi i link nella tabella sopra.")
 
         except Exception as e:
-            st.error("Assicurati che la colonna 'Foto' esista nel foglio 'desideri' su Google Sheets.")
+            st.error(f"Errore caricamento wishlist: {e}")
 
-    # --- STANZE ---
+    # --- 3. STANZE ---
     else:
         st.title(f"🏠 {selezione.capitalize()}")
         try:
