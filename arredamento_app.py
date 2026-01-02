@@ -124,12 +124,14 @@ else:
                 pdf.cell(50, 8, f"{row['Importo']:,.2f}", 1, 1, 'R')
             st.download_button("📄 Esporta Report PDF", data=bytes(pdf.output()), file_name="Report_Arredamento.pdf")
 
-    # --- 2. WISHLIST ---
-    elif selezione == "✨ Wishlist":
-        st.title("✨ Lista dei Desideri")
-        st.info("Gli oggetti inseriti qui non vengono conteggiati nel budget del Riepilogo Generale.")
+    # --- 2. WISHLIST (Ora chiamata 'desideri' su Google Sheets) ---
+        elif selezione == "✨ Wishlist":
+            st.title("✨ Lista dei Desideri")
+            st.info("Gli oggetti inseriti qui non vengono conteggiati nel budget del Riepilogo Generale.")
         try:
+            # Abbiamo cambiato il nome qui...
             df_wish = conn.read(worksheet="desideri", ttl=20)
+
             if df_wish is None or df_wish.empty:
                 df_wish = pd.DataFrame(columns=['Oggetto', 'Link', 'Prezzo Stimato', 'Note'])
 
@@ -144,11 +146,12 @@ else:
 
             if st.button("💾 SALVA WISHLIST"):
                 with st.spinner("Salvataggio..."):
-                    conn.update(worksheet="wishlist", data=df_edit_wish)
+                    # ...quindi dobbiamo cambiarlo anche qui sotto!
+                    conn.update(worksheet="desideri", data=df_edit_wish)
                 st.success("Lista desideri aggiornata!")
                 st.balloons()
         except Exception as e:
-            st.error("Il foglio 'wishlist' non risponde o Google Sheets è occupato. Attendi un momento.")
+            st.error("Errore durante il salvataggio. Verifica che il foglio si chiami ancora 'desideri'.")
 
     # --- 3. STANZE SINGOLE ---
     else:
