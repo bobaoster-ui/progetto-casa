@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V5.7", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V5.8", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
@@ -25,12 +25,6 @@ class PDF(FPDF):
         testo_header = f'Proprietà: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo_header.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
-        self.set_text_color(128, 128, 128)
-        self.cell(0, 10, f'Pagina {self.page_no()}', align='C')
 
 # --- LOGIN ---
 if "password_correct" not in st.session_state:
@@ -78,7 +72,7 @@ else:
                 df_s = conn.read(worksheet=s, ttl="5s")
                 if df_s is not None and not df_s.empty:
                     df_s.columns = [str(c).strip() for c in df_s.columns]
-                    col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo', 'Costo'] if c in df_s.columns), None)
+                    col_p = next((c for c in ['Prezzo Finale', 'Totale', 'Prezzo'] if c in df_s.columns), None)
                     col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df_s.columns), None)
                     col_o = next((c for c in ['Oggetto', 'Articolo', 'Descrizione'] if c in df_s.columns), df_s.columns[0])
 
@@ -114,8 +108,6 @@ else:
         if lista_solo_confermati:
             df_final = pd.concat(lista_solo_confermati)
             st.dataframe(df_final, use_container_width=True, hide_index=True)
-            # Logica PDF omessa per brevità ma inclusa nella versione precedente
-            # st.download_button(...)
 
     # --- 2. WISHLIST ---
     elif selezione == "✨ Wishlist":
@@ -139,50 +131,57 @@ else:
                 "Prezzo Stimato": st.column_config.NumberColumn("Budget €", format="%.2f"),
             }
 
-            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v5_7")
+            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v5_8")
 
             if st.button("💾 SALVA WISHLIST"):
                 with st.spinner("Salvataggio..."):
                     df_to_save = df_edit_wish.drop(columns=['Anteprima'])
                     conn.update(worksheet="desideri", data=df_to_save)
-                    st.balloons() # <--- RITORNANO I PALLONCINI!
+                    st.balloons()
                     st.success("Salvataggio riuscito!")
                     time.sleep(2)
                     st.rerun()
 
-    # --- 3. STANZE ---
+    # --- 3. STANZE (Logica Calcoli Aggiornata) ---
     else:
         st.title(f"🏠 {selezione.capitalize()}")
         df = conn.read(worksheet=selezione, ttl="5s")
         if df is not None:
             df.columns = [str(c).strip() for c in df.columns]
+            # Fix testo per Note e Oggetto
             for col in df.columns:
-                if col not in ['Prezzo Pieno', 'Sconto %', 'Importo Totale', 'Totale', 'Prezzo', 'Costo']:
+                if col not in ['Prezzo Pieno', 'Sconto %', 'Costo', 'Prezzo Finale', 'Acquista S/N', 'Acquistato']:
                     df[col] = df[col].astype(str).replace('nan', '')
 
-            col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
-            col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo', 'Costo'] if c in df.columns), None)
+            col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), 'Acquista S/N')
 
             config_stanza = {
                 col_s: st.column_config.SelectboxColumn("Scelta", options=["S", "N"]),
                 "Prezzo Pieno": st.column_config.NumberColumn("Listino €", format="%.2f"),
                 "Sconto %": st.column_config.NumberColumn("Sconto %"),
-                col_p: st.column_config.NumberColumn("Prezzo Finale", format="%.2f"),
-                "Note": st.column_config.TextColumn("Note", width="large"),
-                "Oggetto": st.column_config.TextColumn("Oggetto", width="medium")
+                "Costo": st.column_config.NumberColumn("Costo Unit. €", format="%.2f", disabled=True), # Calcolato
+                "Acquistato": st.column_config.NumberColumn("Q.tà (Pezzi)", min_value=1, default=1),
+                "Prezzo Finale": st.column_config.NumberColumn("Totale Riga €", format="%.2f", disabled=True), # Calcolato
+                "Note": st.column_config.TextColumn("Note", width="large")
             }
 
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_stanza, key=f"ed_{selezione}")
 
             if st.button("💾 SALVA E CALCOLA"):
-                with st.spinner("Inviando a Google..."):
-                    if "Prezzo Pieno" in df_edit.columns and "Sconto %" in df_edit.columns and col_p:
-                        df_edit[col_p] = df_edit.apply(
-                            lambda row: row["Prezzo Pieno"] * (1 - (row["Sconto %"] / 100))
-                            if pd.notnull(row["Prezzo Pieno"]) and pd.notnull(row["Sconto %"]) else row[col_p], axis=1
-                        )
+                with st.spinner("Calcolo in corso..."):
+                    # Trasformo in numerico per sicurezza
+                    df_edit['Prezzo Pieno'] = pd.to_numeric(df_edit['Prezzo Pieno'], errors='coerce').fillna(0)
+                    df_edit['Sconto %'] = pd.to_numeric(df_edit['Sconto %'], errors='coerce').fillna(0)
+                    df_edit['Acquistato'] = pd.to_numeric(df_edit['Acquistato'], errors='coerce').fillna(1)
+
+                    # 1. Calcolo il Costo (Unitario scontato)
+                    df_edit['Costo'] = df_edit['Prezzo Pieno'] * (1 - (df_edit['Sconto %'] / 100))
+
+                    # 2. Calcolo il Prezzo Finale (Costo * Quantità)
+                    df_edit['Prezzo Finale'] = df_edit['Costo'] * df_edit['Acquistato']
+
                     conn.update(worksheet=selezione, data=df_edit)
-                    st.balloons() # <--- RITORNANO I PALLONCINI ANCHE QUI!
-                    st.success("Dati aggiornati!")
+                    st.balloons()
+                    st.success("Calcoli completati e salvati!")
                     time.sleep(2)
                     st.rerun()
