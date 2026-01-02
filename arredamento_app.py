@@ -7,7 +7,7 @@ from datetime import datetime
 from fpdf import FPDF
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento v3.2", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento v3.3", layout="wide", page_icon="🏠")
 
 # --- CLASSE PER IL PDF ---
 class PDF(FPDF):
@@ -18,7 +18,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 20, 'REPORT SPESE ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 12)
-        # Parola "Proprietà" con accento gestita per FPDF
+        # Parola "Proprietà" con accento (codificata per FPDF)
         testo_header = f'Proprietà: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo_header.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -45,7 +45,6 @@ def check_password():
     return True
 
 if check_password():
-    # Connessione con parametri di cache ottimizzati
     conn = st.connection("gsheets", type=GSheetsConnection)
 
     if st.sidebar.button("Logout 🚪"):
@@ -58,7 +57,6 @@ if check_password():
     st.title("🏠 Gestione Arredamento Professionale")
 
     if selezione == "Riepilogo Generale":
-        # AUTO-REFRESH: Ogni volta che si entra qui, leggiamo i dati freschi
         lista_solo_confermati = []
         tot_conf = 0
         tot_potenziale = 0
@@ -67,7 +65,6 @@ if check_password():
         with st.spinner("Aggiornamento dati in tempo reale..."):
             for s in stanze_reali:
                 try:
-                    # ttl=0 forza l'app a ignorare la vecchia memoria
                     df_s = conn.read(worksheet=s, ttl=0)
                     if df_s is not None and not df_s.empty:
                         df_s.columns = [str(c).strip() for c in df_s.columns]
@@ -94,7 +91,6 @@ if check_password():
                                     lista_solo_confermati.append(temp_df)
                 except: continue
 
-        # Visualizzazione Metriche
         m1, m2, m3 = st.columns(3)
         m1.metric("CONFERMATO (S)", f"{tot_conf:,.2f} EUR")
         m2.metric("DA DECIDERE (N)", f"{(tot_potenziale - tot_conf):,.2f} EUR")
@@ -130,20 +126,34 @@ if check_password():
             st.download_button("📄 Scarica Report PDF (Solo S)", data=bytes(pdf_output), file_name="Report_Jacopo.pdf")
 
     else:
-        # STANZA SINGOLA
+        # STANZA SINGOLA CON AGGIUNTA/CANCELLAZIONE RIGHE
         st.subheader(f"Ambiente: {selezione.capitalize()}")
         try:
-            df = conn.read(worksheet=selezione, ttl=0) # ttl=0 garantisce dati freschi anche qui
+            df = conn.read(worksheet=selezione, ttl=0)
             if df is not None:
                 df.columns = [str(c).strip() for c in df.columns]
                 col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
-                config = {col_s: st.column_config.SelectboxColumn("Acquista?", options=["S", "N"])} if col_s else {}
 
-                df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, key=f"ed_{selezione}")
+                config = {}
+                if col_s:
+                    config[col_s] = st.column_config.SelectboxColumn("Acquista?", options=["S", "N"])
+
+                # ABILITIAMO AGGIUNTA E CANCELLAZIONE RIGHE (num_rows="dynamic")
+                df_edit = st.data_editor(
+                    df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config=config,
+                    num_rows="dynamic",
+                    key=f"ed_{selezione}"
+                )
+
+                st.info("💡 Per aggiungere una riga clicca sull'ultima riga vuota. Per cancellare, seleziona la riga e premi 'Canc' o l'icona del cestino.")
 
                 if st.button(f"💾 SALVA MODIFICHE {selezione.upper()}"):
-                    with st.spinner("Salvataggio in corso..."):
+                    with st.spinner("Salvataggio su Google Sheets..."):
                         conn.update(worksheet=selezione, data=df_edit)
-                    st.success(f"✅ Modifiche salvate! Torna al Riepilogo per vedere i nuovi totali aggiornati.")
+                    st.success(f"✅ Modifiche salvate correttamente!")
+                    st.rerun()
         except Exception as e:
             st.error(f"Errore: {e}")
