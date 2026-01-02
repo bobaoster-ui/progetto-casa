@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V4.3", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V4.3.1", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
@@ -21,7 +21,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 20, 'REPORT SPESE ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 11)
-        # Regola: Proprietà con à
+        # Regola fissa: Proprietà con à
         testo_header = f'Proprietà: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo_header.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -67,10 +67,10 @@ else:
         tot_conf, tot_potenziale = 0, 0
         dati_per_grafico = []
 
-        with st.spinner("Sincronizzazione..."):
+        with st.spinner("Aggiornamento dati..."):
             for s in stanze_reali:
                 try:
-                    df_s = conn.read(worksheet=s, ttl=60)
+                    df_s = conn.read(worksheet=s, ttl=2) # TTL basso per vedere subito i cambi
                     if df_s is not None and not df_s.empty:
                         df_s.columns = [str(c).strip() for c in df_s.columns]
                         col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo', 'Costo'] if c in df_s.columns), None)
@@ -105,93 +105,70 @@ else:
         if lista_solo_confermati:
             df_final = pd.concat(lista_solo_confermati)
             st.dataframe(df_final, use_container_width=True, hide_index=True)
-
             pdf = PDF()
             pdf.add_page()
-            # Logica PDF... (omessa per brevità ma preservata nel tuo sistema)
             st.download_button("📄 Scarica Report PDF", data=bytes(pdf.output()), file_name="Report_Arredamento.pdf")
 
-    # --- 2. WISHLIST (Puntando a 'desideri') ---
+    # --- 2. WISHLIST ---
     elif selezione == "✨ Wishlist":
         st.title("✨ La Tua Wishlist Visiva")
-        st.info("Incolla l'URL della foto nella colonna 'Foto'. L'anteprima si aggiorna dopo il salvataggio.")
-
         try:
-            df_wish = conn.read(worksheet="desideri", ttl=30)
-            if df_wish is None or df_wish.empty:
-                df_wish = pd.DataFrame(columns=['Oggetto', 'Foto', 'Link', 'Prezzo Stimato', 'Note'])
+            df_wish = conn.read(worksheet="desideri", ttl=2)
+            if df_wish is not None:
+                df_wish.columns = [str(c).strip() for c in df_wish.columns]
+                df_display = df_wish.copy()
+                df_display['Anteprima'] = df_display['Foto']
 
-            df_wish.columns = [str(c).strip() for c in df_wish.columns]
-            df_display = df_wish.copy()
-            df_display['Anteprima'] = df_display['Foto']
+                config_wish = {
+                    "Anteprima": st.column_config.ImageColumn("Preview", width="medium"),
+                    "Oggetto": st.column_config.TextColumn("Nome Oggetto", width="medium"),
+                    "Foto": st.column_config.TextColumn("🔗 Link Foto"),
+                    "Link": st.column_config.LinkColumn("🔗 Link Sito"),
+                    "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f"),
+                }
 
-            config_wish = {
-                "Anteprima": st.column_config.ImageColumn("Preview", width="medium"),
-                "Oggetto": st.column_config.TextColumn("Nome Oggetto", width="medium"),
-                "Foto": st.column_config.TextColumn("🔗 Link Foto"),
-                "Link": st.column_config.LinkColumn("🔗 Link Sito"),
-                "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f"),
-            }
+                df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v4_3_1")
 
-            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v4_3")
+                if st.button("💾 SALVA MODIFICHE"):
+                    with st.spinner("Salvataggio in corso..."):
+                        df_to_save = df_edit_wish.drop(columns=['Anteprima'])
+                        conn.update(worksheet="desideri", data=df_to_save)
+                        st.cache_data.clear() # Trucco: puliamo la cache
+                        st.success("Salvataggio riuscito!")
+                        st.balloons()
+                        time.sleep(3) # Pausa più lunga per far respirare Google
+                        st.rerun()
 
-            if st.button("💾 SALVA MODIFICHE"):
-                with st.spinner("Salvataggio..."):
-                    df_to_save = df_edit_wish.drop(columns=['Anteprima'])
-                    conn.update(worksheet="desideri", data=df_to_save)
-                    st.success("Wishlist aggiornata!")
-                    st.balloons()
-                    time.sleep(2)
-                    st.rerun()
-
-            st.markdown("---")
-            st.subheader("🖼️ Galleria Rapida")
-            foto_validi = df_edit_wish[df_edit_wish['Foto'].astype(str).str.startswith('http', na=False)]
-            if not foto_validi.empty:
-                cols = st.columns(4)
-                for i, row in enumerate(foto_validi.itertuples()):
-                    with cols[i % 4]:
-                        st.image(row.Foto, caption=row.Oggetto, use_container_width=True)
-
+                st.markdown("---")
+                st.subheader("🖼️ Galleria Rapida")
+                foto_validi = df_edit_wish[df_edit_wish['Foto'].astype(str).str.startswith('http', na=False)]
+                if not foto_validi.empty:
+                    cols = st.columns(4)
+                    for i, row in enumerate(foto_validi.itertuples()):
+                        with cols[i % 4]:
+                            st.image(row.Foto, caption=row.Oggetto, use_container_width=True)
         except Exception as e:
-            st.error(f"Errore: {e}")
+            st.info("Aggiornamento connessione... ricarica la pagina tra 5 secondi.")
 
-    # --- 3. STANZE (Con menu a discesa ripristinato!) ---
+    # --- 3. STANZE ---
     else:
         st.title(f"🏠 {selezione.capitalize()}")
         try:
-            df = conn.read(worksheet=selezione, ttl=60)
+            df = conn.read(worksheet=selezione, ttl=2)
             if df is not None:
                 df.columns = [str(c).strip() for c in df.columns]
-
-                # Identifichiamo la colonna della scelta S/N
                 col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
+                config_stanza = {col_s: st.column_config.SelectboxColumn("Scelta", options=["S", "N"], required=True)} if col_s else {}
 
-                # Configuriamo il menu a discesa
-                config_stanza = {}
-                if col_s:
-                    config_stanza[col_s] = st.column_config.SelectboxColumn(
-                        "Scelta",
-                        help="Seleziona S per confermare l'acquisto",
-                        options=["S", "N"],
-                        required=True,
-                    )
-
-                df_edit = st.data_editor(
-                    df,
-                    use_container_width=True,
-                    hide_index=True,
-                    num_rows="dynamic",
-                    column_config=config_stanza,
-                    key=f"ed_{selezione}"
-                )
+                df_edit = st.data_editor(df, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_stanza, key=f"ed_{selezione}")
 
                 if st.button("💾 SALVA DATI"):
-                    with st.spinner("Salvataggio..."):
+                    with st.spinner("Comunicazione con Google Sheets..."):
                         conn.update(worksheet=selezione, data=df_edit)
-                    st.success(f"Dati di {selezione} salvati!")
-                    st.balloons()
-                    time.sleep(1)
-                    st.rerun()
+                        st.cache_data.clear() # Pulizia cache
+                        st.success(f"Dati di {selezione} salvati!")
+                        st.balloons()
+                        time.sleep(3) # Diamo tempo a Google di finire la scrittura
+                        st.rerun()
         except:
-            st.error("Google Sheets è occupato. Riprova tra poco.")
+            st.info("Sincronizzazione in corso. Attendi un istante.")
