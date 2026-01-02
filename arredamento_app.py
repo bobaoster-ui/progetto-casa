@@ -7,7 +7,7 @@ from datetime import datetime
 from fpdf import FPDF
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento v2.7", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento v2.8", layout="wide", page_icon="🏠")
 
 # --- CLASSE PER IL PDF ---
 class PDF(FPDF):
@@ -16,6 +16,7 @@ class PDF(FPDF):
         self.rect(0, 0, 210, 40, 'F')
         self.set_font('Arial', 'B', 20)
         self.set_text_color(255, 255, 255)
+        # Usiamo 'EUR' invece di '€' per evitare errori
         self.cell(0, 20, 'REPORT SPESE ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 12)
         self.cell(0, 10, f'Proprieta: Jacopo - {datetime.now().strftime("%d/%m/%Y")}', ln=True, align='C')
@@ -65,12 +66,8 @@ if check_password():
                 df_s = conn.read(worksheet=s, ttl=0)
                 if df_s is not None and not df_s.empty:
                     df_s.columns = [str(c).strip() for c in df_s.columns]
-
-                    # 1. Identificazione colonna PREZZO
                     col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo', 'Costo'] if c in df_s.columns), None)
-                    # 2. Identificazione colonna SCELTA (S/N)
                     col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta', 'Acquista'] if c in df_s.columns), None)
-                    # 3. Identificazione colonna OGGETTO (IL TUO PROBLEMA ERA QUI!)
                     col_o = next((c for c in ['Oggetto', 'Articolo', 'Descrizione', 'Nome'] if c in df_s.columns), df_s.columns[0])
 
                     if col_p:
@@ -84,7 +81,6 @@ if check_password():
                                 s_conf = df_s_conf[col_p].sum()
                                 tot_conf += s_conf
 
-                                # Creiamo una struttura standard per la tabella
                                 temp_df = pd.DataFrame({
                                     'Ambiente': s.capitalize(),
                                     'Oggetto': df_s_conf[col_o].astype(str),
@@ -94,27 +90,24 @@ if check_password():
                                 dati_grafico.append({"Stanza": s.capitalize(), "Spesa": s_conf})
             except: continue
 
-        # Visualizzazione Metriche (Torniamo a 3 come piace a te!)
         m1, m2, m3 = st.columns(3)
-        m1.metric("CONFERMATO (S)", f"{tot_conf:,.2f} €")
-        m2.metric("DA DECIDERE (N)", f"{(tot_potenziale - tot_conf):,.2f} €")
-        m3.metric("BUDGET TOTALE", f"{tot_potenziale:,.2f} €")
+        m1.metric("CONFERMATO (S)", f"{tot_conf:,.2f} EUR")
+        m2.metric("DA DECIDERE (N)", f"{(tot_potenziale - tot_conf):,.2f} EUR")
+        m3.metric("BUDGET TOTALE", f"{tot_potenziale:,.2f} EUR")
 
         if lista_completa:
             df_final = pd.concat(lista_completa)
             st.write("### 📋 Dettaglio Acquisti Confermati")
             st.dataframe(df_final, use_container_width=True, hide_index=True)
 
-            # Grafico e PDF
             c1, c2 = st.columns([2, 1])
             with c1:
                 df_plot = pd.DataFrame(dati_grafico)
-                fig = px.pie(df_plot, values='Spesa', names='Stanza', title="Ripartizione Spese per Stanza")
+                fig = px.pie(df_plot, values='Spesa', names='Stanza', title="Ripartizione Spese")
                 st.plotly_chart(fig)
 
             with c2:
                 st.write("#### Export")
-                # PDF
                 pdf = PDF()
                 pdf.add_page()
                 pdf.set_font("Arial", 'B', 12)
@@ -125,9 +118,14 @@ if check_password():
 
                 pdf.set_font("Arial", '', 10)
                 for _, row in df_final.iterrows():
-                    pdf.cell(40, 8, str(row['Ambiente']), 1)
-                    pdf.cell(100, 8, str(row['Oggetto'])[:50], 1)
-                    pdf.cell(50, 8, f"{row['Importo']:,.2f} €", 1, 1, 'R')
+                    # Pulizia testo per evitare errori Unicode
+                    ogg_clean = str(row['Oggetto']).encode('latin-1', 'ignore').decode('latin-1')
+                    amb_clean = str(row['Ambiente']).encode('latin-1', 'ignore').decode('latin-1')
+
+                    pdf.cell(40, 8, amb_clean, 1)
+                    pdf.cell(100, 8, ogg_clean[:50], 1)
+                    # Sostituito € con EUR per evitare il crash
+                    pdf.cell(50, 8, f"{row['Importo']:,.2f} EUR", 1, 1, 'R')
 
                 pdf.ln(5)
                 pdf.set_font("Arial", 'B', 12)
@@ -136,28 +134,21 @@ if check_password():
 
                 pdf_output = pdf.output()
                 st.download_button("📄 Scarica Report PDF", data=bytes(pdf_output), file_name="Report_Jacopo.pdf")
-
         else:
-            st.warning("⚠️ Nessun oggetto contrassegnato con 'S'. Vai nelle singole stanze per confermare gli acquisti.")
+            st.warning("⚠️ Nessun oggetto contrassegnato con 'S'.")
 
     else:
-        # STANZA SINGOLA
         st.subheader(f"Ambiente: {selezione.capitalize()}")
         try:
             df = conn.read(worksheet=selezione, ttl=0)
             if df is not None:
                 df.columns = [str(c).strip() for c in df.columns]
-                col_scelta = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
-
-                config = {}
-                if col_scelta:
-                    config[col_scelta] = st.column_config.SelectboxColumn("Acquista?", options=["S", "N"])
-
+                col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
+                config = {col_s: st.column_config.SelectboxColumn("Acquista?", options=["S", "N"])} if col_s else {}
                 df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, key=f"ed_{selezione}")
-
                 if st.button(f"💾 SALVA {selezione.upper()}"):
                     conn.update(worksheet=selezione, data=df_edit)
-                    st.success("Dati aggiornati correttamente!")
+                    st.success("Dati aggiornati!")
                     st.rerun()
         except Exception as e:
             st.error(f"Errore: {e}")
