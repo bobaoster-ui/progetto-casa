@@ -73,26 +73,28 @@ if selezione == "Riepilogo":
                              color_discrete_sequence=["#2ecc71", "#ecf0f1"], hole=0.4)
             st.plotly_chart(fig_pie, use_container_width=True)
 
-# --- CASO B: STANZA SINGOLA CON DROPDOWN ---
+
+# --- CASO B: STANZA SINGOLA CON RICALCOLO AUTOMATICO ---
 else:
     st.subheader(f"Dettaglio: {selezione.capitalize()}")
     try:
         df = conn.read(worksheet=selezione, ttl=0)
         if df is not None:
-            # Pulizia nomi colonne per sicurezza
             df.columns = [str(c).strip() for c in df.columns]
 
-            # Identifichiamo la colonna S/N per il dropdown
-            col_scelta = next((c for c in ['Acquista S/N', 'S/N', 'Acquistato', 'Scelta'] if c in df.columns), None)
+            # Identifichiamo le colonne necessarie
+            col_prezzo = next((c for c in ['Prezzo', 'Costo', 'Prezzo Unitario'] if c in df.columns), None)
+            col_quantita = next((c for c in ['Quantità', 'Q.tà', 'Pezzi'] if c in df.columns), None)
+            col_totale = next((c for c in ['Importo Totale', 'Totale'] if c in df.columns), None)
+            col_scelta = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
 
-            # Configurazione editor: trasforma la colonna S/N in una lista di scelta
             config_colonne = {}
             if col_scelta:
-                config_colonne[col_scelta] = st.column_config.SelectboxColumn(
-                    "Acquista?",
-                    options=["S", "N"],
-                    required=True,
-                )
+                config_colonne[col_scelta] = st.column_config.SelectboxColumn("Acquista?", options=["S", "N"], required=True)
+
+            # Rendiamo la colonna Totale non modificabile manualmente (la calcoliamo noi)
+            if col_totale:
+                config_colonne[col_totale] = st.column_config.NumberColumn("Importo Totale", disabled=True, format="%.2f €")
 
             df_edit = st.data_editor(
                 df,
@@ -103,11 +105,18 @@ else:
                 num_rows="dynamic"
             )
 
-            if st.button(f"💾 SALVA MODIFICHE {selezione.upper()}"):
-                with st.spinner("Salvataggio..."):
+            if st.button(f"💾 SALVA E RICALCOLA {selezione.upper()}"):
+                with st.spinner("Ricalcolo importi e salvataggio..."):
+                    # TRUCCO: Ricalcoliamo il totale riga per riga prima di salvare
+                    if col_prezzo and col_quantita and col_totale:
+                        # Convertiamo in numeri per evitare errori
+                        p = pd.to_numeric(df_edit[col_prezzo], errors='coerce').fillna(0)
+                        q = pd.to_numeric(df_edit[col_quantita], errors='coerce').fillna(0)
+                        df_edit[col_totale] = p * q
+
                     conn.update(worksheet=selezione, data=df_edit)
-                    st.success("Dati salvati!")
+                    st.success(f"Totale ricalcolato e salvato per {selezione}!")
                     st.balloons()
                     st.rerun()
     except Exception as e:
-        st.error(f"Errore: {e}")
+        st.error(f"Errore durante il ricalcolo: {e}")
