@@ -12,7 +12,6 @@ st.set_page_config(page_title="Monitoraggio Arredamento v2.5", layout="wide", pa
 # --- CLASSE PER IL PDF ---
 class PDF(FPDF):
     def header(self):
-        # Colore Blu Professionale
         self.set_fill_color(46, 117, 182)
         self.rect(0, 0, 210, 40, 'F')
         self.set_font('Arial', 'B', 20)
@@ -43,19 +42,23 @@ def check_password():
         return False
     return True
 
+# --- LOGICA PRINCIPALE ---
 if check_password():
     conn = st.connection("gsheets", type=GSheetsConnection)
 
+    # Sidebar
     if st.sidebar.button("Logout 🚪"):
         st.session_state.clear()
         st.rerun()
 
-    st.title("🏠 Gestione Arredamento Professionale")
-
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
+    # DEFINIAMO SELEZIONE QUI FUORI, COSI' NON DA' NameError
     selezione = st.sidebar.selectbox("Menu:", ["Riepilogo Generale"] + stanze_reali)
 
-if selezione == "Riepilogo Generale":
+    st.title("🏠 Gestione Arredamento Professionale")
+
+    if selezione == "Riepilogo Generale":
+        st.subheader("📊 Analisi Budget")
         lista_completa = []
         tot_conf = 0
 
@@ -63,12 +66,8 @@ if selezione == "Riepilogo Generale":
             try:
                 df_s = conn.read(worksheet=s, ttl=0)
                 if df_s is not None and not df_s.empty:
-                    # Pulizia nomi colonne
                     df_s.columns = [str(c).strip() for c in df_s.columns]
-
-                    # Cerchiamo il prezzo tra varie opzioni possibili
-                    col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo', 'Costo'] if c in df_s.columns), None)
-                    # Cerchiamo la scelta S/N
+                    col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo'] if c in df_s.columns), None)
                     col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df_s.columns), None)
 
                     if col_p and col_s:
@@ -76,32 +75,24 @@ if selezione == "Riepilogo Generale":
                         df_s_conf = df_s[df_s[col_s].astype(str).str.upper() == 'S'].copy()
                         if not df_s_conf.empty:
                             df_s_conf['Ambiente'] = s.capitalize()
-                            # Prendiamo solo le colonne che esistono davvero
                             lista_completa.append(df_s_conf[['Ambiente', 'Oggetto', col_p]])
                             tot_conf += df_s_conf[col_p].sum()
-                    else:
-                        st.warning(f"Nella stanza {s} mancano le colonne 'Totale' o 'S/N'. Controlla il foglio Google!")
-            except Exception as e:
-                st.error(f"Errore nella stanza {s}: {e}")
+            except: continue
 
         if lista_completa:
             df_final = pd.concat(lista_completa)
-
-            st.subheader(f"Totale Confermato: {tot_conf:,.2f} €")
+            st.metric("Totale Confermato (S)", f"{tot_conf:,.2f} €")
             st.dataframe(df_final, use_container_width=True, hide_index=True)
 
             # --- GENERAZIONE PDF ---
             pdf = PDF()
             pdf.add_page()
             pdf.set_font("Arial", 'B', 12)
-
-            # Intestazione Tabella
             pdf.set_fill_color(240, 240, 240)
             pdf.cell(40, 10, 'Ambiente', 1, 0, 'C', True)
             pdf.cell(100, 10, 'Oggetto', 1, 0, 'C', True)
             pdf.cell(50, 10, 'Importo', 1, 1, 'C', True)
 
-            # Corpo Tabella
             pdf.set_font("Arial", '', 10)
             for _, row in df_final.iterrows():
                 pdf.cell(40, 8, str(row['Ambiente']), 1)
@@ -114,11 +105,38 @@ if selezione == "Riepilogo Generale":
             pdf.cell(50, 10, f"{tot_conf:,.2f} EUR", 0, 1, 'R')
 
             pdf_output = pdf.output()
-
             st.sidebar.download_button(
-                label="📄 Scarica Report PDF Professionale",
+                label="📄 Scarica Report PDF",
                 data=bytes(pdf_output),
-                file_name=f"Report_Arredamento_Jacopo_{datetime.now().strftime('%Y%m%d')}.pdf",
+                file_name=f"Report_Jacopo_{datetime.now().strftime('%Y%m%d')}.pdf",
                 mime="application/pdf"
             )
-            st.success("Report PDF pronto nella barra laterale!")
+        else:
+            st.info("Nessun oggetto confermato (S) trovato nelle stanze.")
+
+    else:
+        # SEZIONE STANZA SINGOLA
+        st.subheader(f"Ambiente: {selezione.capitalize()}")
+        try:
+            df = conn.read(worksheet=selezione, ttl=0)
+            if df is not None:
+                df.columns = [str(c).strip() for c in df.columns]
+                # Definiamo le colonne per l'editor
+                col_prezzo = next((c for c in ['Costo', 'Prezzo', 'Prezzo Unitario'] if c in df.columns), None)
+                col_quantita = next((c for c in ['Acquistato', 'Quantità'] if c in df.columns), None)
+                col_totale = next((c for c in ['Importo Totale', 'Totale'] if c in df.columns), None)
+                col_scelta = next((c for c in ['Acquista S/N', 'S/N'] if c in df.columns), None)
+
+                df_edit = st.data_editor(df, use_container_width=True, hide_index=True, key=f"ed_{selezione}")
+
+                if st.button(f"💾 SALVA {selezione.upper()}"):
+                    df_save = df_edit.copy()
+                    if col_prezzo and col_quantita and col_totale:
+                        p = pd.to_numeric(df_save[col_prezzo], errors='coerce').fillna(0)
+                        q = pd.to_numeric(df_save[col_quantita], errors='coerce').fillna(0)
+                        df_save[col_totale] = (p * q).round(2)
+                    conn.update(worksheet=selezione, data=df_save)
+                    st.success("Dati aggiornati!")
+                    st.rerun()
+        except Exception as e:
+            st.error(f"Errore nel caricamento della stanza: {e}")
