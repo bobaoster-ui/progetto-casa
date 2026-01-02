@@ -111,10 +111,10 @@ else:
             # Logica PDF...
             st.download_button("📄 Scarica Report PDF", data=bytes(pdf.output()), file_name="Report_Arredamento.pdf")
 
-    # --- 2. WISHLIST (Puntando a 'desideri') ---
+# --- 2. WISHLIST (Puntando a 'desideri') ---
     elif selezione == "✨ Wishlist":
         st.title("✨ La Tua Wishlist Visiva")
-        st.info("Incolla l'URL della foto nella colonna 'Link Foto'. Vedrai l'anteprima sia in riga che in galleria!")
+        st.info("Incolla l'URL della foto nella colonna 'Link Foto'. L'anteprima si aggiornerà dopo il salvataggio.")
 
         try:
             df_wish = conn.read(worksheet="desideri", ttl=30)
@@ -123,37 +123,55 @@ else:
 
             df_wish.columns = [str(c).strip() for c in df_wish.columns]
 
-            # Creiamo una colonna extra per la visualizzazione in tabella
+            # Creiamo la colonna extra per l'anteprima
             df_display = df_wish.copy()
             df_display['Anteprima'] = df_display['Foto']
 
+            # --- CONFIGURAZIONE LARGHEZZA COLONNE ---
             config_wish = {
-                "Anteprima": st.column_config.ImageColumn("Preview"),
-                "Foto": st.column_config.TextColumn("🔗 Link Foto (Modificabile)"),
-                "Link": st.column_config.LinkColumn("🔗 Link Sito"),
-                "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f"),
+                "Anteprima": st.column_config.ImageColumn(
+                    "Preview",
+                    width="medium", # Allarga la visualizzazione dell'immagine
+                    help="Anteprima visiva dell'oggetto"
+                ),
+                "Oggetto": st.column_config.TextColumn(
+                    "Nome Oggetto",
+                    width="medium"
+                ),
+                "Foto": st.column_config.TextColumn(
+                    "🔗 Link Foto (Modificabile)",
+                    width="small" # Teniamo questa più stretta perché è solo testo tecnico
+                ),
+                "Link": st.column_config.LinkColumn(
+                    "🔗 Link Sito",
+                    width="medium"
+                ),
+                "Prezzo Stimato": st.column_config.NumberColumn(
+                    "Prezzo (EUR)",
+                    format="%.2f",
+                    width="small"
+                ),
             }
 
-            # Mostriamo la tabella. Nota: 'Anteprima' mostra l'immagine, 'Foto' permette di incollare il link.
             df_edit_wish = st.data_editor(
                 df_display,
                 use_container_width=True,
                 hide_index=True,
                 num_rows="dynamic",
                 column_config=config_wish,
-                key="wish_v4_2"
+                key="wish_v4_3" # Aggiornato key per forzare il refresh del layout
             )
 
             if st.button("💾 SALVA MODIFICHE"):
                 with st.spinner("Salvataggio in corso..."):
-                    # Salviamo solo le colonne originali su Google Sheets
                     df_to_save = df_edit_wish.drop(columns=['Anteprima'])
                     conn.update(worksheet="desideri", data=df_to_save)
-                    st.success("Catalogo aggiornato con successo!")
+                    st.success("Catalogo aggiornato!")
                     st.balloons()
-                    time.sleep(2) # Diamo tempo di vedere i palloncini
+                    time.sleep(2)
                     st.rerun()
 
+            # Galleria in basso (rimane invariata perché utile per vedere i dettagli grandi)
             st.markdown("---")
             st.subheader("🖼️ Galleria Rapida")
             foto_validi = df_edit_wish[df_edit_wish['Foto'].astype(str).str.startswith('http', na=False)]
