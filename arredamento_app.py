@@ -7,7 +7,7 @@ from datetime import datetime
 from fpdf import FPDF
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento v3.5", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento v3.6", layout="wide", page_icon="🏠")
 
 # --- CLASSE PER IL PDF ---
 class PDF(FPDF):
@@ -18,7 +18,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 20, 'REPORT SPESE ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 12)
-        # Utilizzo della Proprietà con accento corretta
+        # Proprietà con la à accentata correttamente
         testo_header = f'Proprietà: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo_header.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -47,10 +47,15 @@ def check_password():
 if check_password():
     conn = st.connection("gsheets", type=GSheetsConnection)
 
-    # --- SIDEBAR CON LOGO ---
+    # --- SIDEBAR CON IL TUO LOGO ---
     with st.sidebar:
-        # Inseriamo un'immagine elegante che richiama il design dell'arredamento
-        st.image("https://cdn-icons-png.flaticon.com/512/619/619153.png", width=100)
+        try:
+            # Qui usiamo il file che caricherai su GitHub
+            st.image("logo.png", width=200)
+        except:
+            # Se non trova il file, mette un'icona di riserva per non far crashare l'app
+            st.image("https://cdn-icons-png.flaticon.com/512/619/619153.png", width=80)
+
         st.markdown("### Gestione Jacopo")
         st.divider()
 
@@ -69,7 +74,7 @@ if check_password():
         tot_potenziale = 0
         dati_per_grafico_totale = []
 
-        with st.spinner("Sincronizzazione con il database..."):
+        with st.spinner("Sincronizzazione dati..."):
             for s in stanze_reali:
                 try:
                     df_s = conn.read(worksheet=s, ttl=0)
@@ -107,8 +112,7 @@ if check_password():
         if dati_per_grafico_totale:
             df_plot = pd.DataFrame(dati_per_grafico_totale)
             fig = px.bar(df_plot, x='Stanza', y='Budget', color='Stanza',
-                         title="Ripartizione Budget Totale per Ambiente",
-                         color_discrete_sequence=px.colors.qualitative.Safe)
+                         title="Budget Totale per Ambiente")
             st.plotly_chart(fig, use_container_width=True)
 
         if lista_solo_confermati:
@@ -133,29 +137,26 @@ if check_password():
                 pdf.cell(50, 8, f"{row['Importo']:,.2f} EUR", 1, 1, 'R')
 
             pdf_output = pdf.output()
-            st.download_button("📄 Scarica Report PDF", data=bytes(pdf_output), file_name="Report_Jacopo.pdf")
+            st.download_button("📄 Report PDF", data=bytes(pdf_output), file_name="Report_Jacopo.pdf")
 
     else:
         # STANZA SINGOLA
-        st.subheader(f"Modifica Ambiente: {selezione.capitalize()}")
+        st.subheader(f"Ambiente: {selezione.capitalize()}")
         try:
             df = conn.read(worksheet=selezione, ttl=0)
             if df is not None:
                 df.columns = [str(c).strip() for c in df.columns]
                 col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
                 config = {col_s: st.column_config.SelectboxColumn("Acquista?", options=["S", "N"])} if col_s else {}
-
                 df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic", key=f"ed_{selezione}")
 
                 col_btn1, col_btn2 = st.columns([1, 4])
                 if col_btn1.button(f"💾 SALVA {selezione.upper()}"):
                     with st.spinner("Salvataggio..."):
                         conn.update(worksheet=selezione, data=df_edit)
-                    st.success(f"✅ Dati di {selezione.capitalize()} salvati!")
+                    st.success(f"✅ Salvato!")
                     st.balloons()
-
                 if col_btn2.button("Aggiorna Vista 🔄"):
                     st.rerun()
-
         except Exception as e:
             st.error(f"Errore: {e}")
