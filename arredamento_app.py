@@ -71,7 +71,7 @@ else:
         with st.spinner("Sincronizzazione dati in corso..."):
             for s in stanze_reali:
                 try:
-                    df_s = conn.read(worksheet=s, ttl=15)
+                    df_s = conn.read(worksheet=s, ttl=60)
                     if df_s is not None and not df_s.empty:
                         df_s.columns = [str(c).strip() for c in df_s.columns]
                         col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo', 'Costo'] if c in df_s.columns), None)
@@ -130,7 +130,7 @@ else:
             st.info("Gli oggetti inseriti qui non vengono conteggiati nel budget del Riepilogo Generale.")
         try:
             # Abbiamo cambiato il nome qui...
-            df_wish = conn.read(worksheet="desideri", ttl=20)
+            df_wish = conn.read(worksheet="desideri", ttl=60)
 
             if df_wish is None or df_wish.empty:
                 df_wish = pd.DataFrame(columns=['Oggetto', 'Link', 'Prezzo Stimato', 'Note'])
