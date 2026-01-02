@@ -1,4 +1,3 @@
 st-gsheets-connection
 plotly
 xlsxwriter
-pandas
