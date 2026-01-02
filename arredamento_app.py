@@ -7,7 +7,7 @@ from datetime import datetime
 from fpdf import FPDF
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento v2.8", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento v2.9", layout="wide", page_icon="🏠")
 
 # --- CLASSE PER IL PDF ---
 class PDF(FPDF):
@@ -16,10 +16,9 @@ class PDF(FPDF):
         self.rect(0, 0, 210, 40, 'F')
         self.set_font('Arial', 'B', 20)
         self.set_text_color(255, 255, 255)
-        # Usiamo 'EUR' invece di '€' per evitare errori
         self.cell(0, 20, 'REPORT SPESE ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 12)
-        self.cell(0, 10, f'Proprieta: Jacopo - {datetime.now().strftime("%d/%m/%Y")}', ln=True, align='C')
+        self.cell(0, 10, f'Proprietà: Jacopo - {datetime.now().strftime("%d/%m/%Y")}', ln=True, align='C')
         self.ln(15)
 
     def footer(self):
@@ -56,10 +55,10 @@ if check_password():
     st.title("🏠 Gestione Arredamento Professionale")
 
     if selezione == "Riepilogo Generale":
-        lista_completa = []
+        lista_solo_confermati = []
         tot_conf = 0
         tot_potenziale = 0
-        dati_grafico = []
+        dati_per_grafico_totale = []
 
         for s in stanze_reali:
             try:
@@ -72,72 +71,68 @@ if check_password():
 
                     if col_p:
                         df_s[col_p] = pd.to_numeric(df_s[col_p], errors='coerce').fillna(0)
-                        tot_potenziale += df_s[col_p].sum()
+                        spesa_stanza_totale = df_s[col_p].sum()
+                        tot_potenziale += spesa_stanza_totale
+
+                        # Dati per il grafico (sempre presenti, S + N)
+                        dati_per_grafico_totale.append({"Stanza": s.capitalize(), "Budget": spesa_stanza_totale})
 
                         if col_s:
                             df_s[col_s] = df_s[col_s].astype(str).str.strip().str.upper()
                             df_s_conf = df_s[df_s[col_s] == 'S'].copy()
                             if not df_s_conf.empty:
-                                s_conf = df_s_conf[col_p].sum()
-                                tot_conf += s_conf
-
+                                tot_conf += df_s_conf[col_p].sum()
                                 temp_df = pd.DataFrame({
                                     'Ambiente': s.capitalize(),
                                     'Oggetto': df_s_conf[col_o].astype(str),
                                     'Importo': df_s_conf[col_p]
                                 })
-                                lista_completa.append(temp_df)
-                                dati_grafico.append({"Stanza": s.capitalize(), "Spesa": s_conf})
+                                lista_solo_confermati.append(temp_df)
             except: continue
 
+        # Visualizzazione Metriche
         m1, m2, m3 = st.columns(3)
         m1.metric("CONFERMATO (S)", f"{tot_conf:,.2f} EUR")
         m2.metric("DA DECIDERE (N)", f"{(tot_potenziale - tot_conf):,.2f} EUR")
-        m3.metric("BUDGET TOTALE", f"{tot_potenziale:,.2f} EUR")
+        m3.metric("BUDGET TOTALE (S+N)", f"{tot_potenziale:,.2f} EUR")
 
-        if lista_completa:
-            df_final = pd.concat(lista_completa)
-            st.write("### 📋 Dettaglio Acquisti Confermati")
+        # GRAFICI (Sempre visibili se ci sono dati)
+        if dati_per_grafico_totale:
+            st.write("### 📊 Analisi Budget per Stanza (S + N)")
+            df_plot = pd.DataFrame(dati_per_grafico_totale)
+            fig = px.bar(df_plot, x='Stanza', y='Budget', color='Stanza', title="Potenziale di spesa totale")
+            st.plotly_chart(fig, use_container_width=True)
+
+        # TABELLA E PDF (Solo se ci sono "S")
+        if lista_solo_confermati:
+            st.write("### 📋 Dettaglio Acquisti Confermati (S)")
+            df_final = pd.concat(lista_solo_confermati)
             st.dataframe(df_final, use_container_width=True, hide_index=True)
 
-            c1, c2 = st.columns([2, 1])
-            with c1:
-                df_plot = pd.DataFrame(dati_grafico)
-                fig = px.pie(df_plot, values='Spesa', names='Stanza', title="Ripartizione Spese")
-                st.plotly_chart(fig)
+            # Export PDF
+            pdf = PDF()
+            pdf.add_page()
+            pdf.set_font("Arial", 'B', 12)
+            pdf.set_fill_color(240, 240, 240)
+            pdf.cell(40, 10, 'Ambiente', 1, 0, 'C', True)
+            pdf.cell(100, 10, 'Oggetto', 1, 0, 'C', True)
+            pdf.cell(50, 10, 'Importo', 1, 1, 'C', True)
 
-            with c2:
-                st.write("#### Export")
-                pdf = PDF()
-                pdf.add_page()
-                pdf.set_font("Arial", 'B', 12)
-                pdf.set_fill_color(240, 240, 240)
-                pdf.cell(40, 10, 'Ambiente', 1, 0, 'C', True)
-                pdf.cell(100, 10, 'Oggetto', 1, 0, 'C', True)
-                pdf.cell(50, 10, 'Importo', 1, 1, 'C', True)
+            pdf.set_font("Arial", '', 10)
+            for _, row in df_final.iterrows():
+                ogg_clean = str(row['Oggetto']).encode('latin-1', 'ignore').decode('latin-1')
+                amb_clean = str(row['Ambiente']).encode('latin-1', 'ignore').decode('latin-1')
+                pdf.cell(40, 8, amb_clean, 1)
+                pdf.cell(100, 8, ogg_clean[:50], 1)
+                pdf.cell(50, 8, f"{row['Importo']:,.2f} EUR", 1, 1, 'R')
 
-                pdf.set_font("Arial", '', 10)
-                for _, row in df_final.iterrows():
-                    # Pulizia testo per evitare errori Unicode
-                    ogg_clean = str(row['Oggetto']).encode('latin-1', 'ignore').decode('latin-1')
-                    amb_clean = str(row['Ambiente']).encode('latin-1', 'ignore').decode('latin-1')
-
-                    pdf.cell(40, 8, amb_clean, 1)
-                    pdf.cell(100, 8, ogg_clean[:50], 1)
-                    # Sostituito € con EUR per evitare il crash
-                    pdf.cell(50, 8, f"{row['Importo']:,.2f} EUR", 1, 1, 'R')
-
-                pdf.ln(5)
-                pdf.set_font("Arial", 'B', 12)
-                pdf.cell(140, 10, 'TOTALE GENERALE', 0)
-                pdf.cell(50, 10, f"{tot_conf:,.2f} EUR", 0, 1, 'R')
-
-                pdf_output = pdf.output()
-                st.download_button("📄 Scarica Report PDF", data=bytes(pdf_output), file_name="Report_Jacopo.pdf")
+            pdf_output = pdf.output()
+            st.download_button("📄 Scarica Report PDF (Solo S)", data=bytes(pdf_output), file_name="Report_Jacopo.pdf")
         else:
-            st.warning("⚠️ Nessun oggetto contrassegnato con 'S'.")
+            st.info("💡 Suggerimento: Per generare il PDF e la tabella di dettaglio, imposta 'S' nella colonna Acquista delle singole stanze.")
 
     else:
+        # STANZA SINGOLA (Codice invariato e stabile)
         st.subheader(f"Ambiente: {selezione.capitalize()}")
         try:
             df = conn.read(worksheet=selezione, ttl=0)
@@ -148,7 +143,7 @@ if check_password():
                 df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, key=f"ed_{selezione}")
                 if st.button(f"💾 SALVA {selezione.upper()}"):
                     conn.update(worksheet=selezione, data=df_edit)
-                    st.success("Dati aggiornati!")
+                    st.success("Dati salvati!")
                     st.rerun()
         except Exception as e:
             st.error(f"Errore: {e}")
