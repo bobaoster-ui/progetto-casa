@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V5.0", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V5.1", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
@@ -60,15 +60,24 @@ else:
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
     selezione = st.sidebar.selectbox("Menu Principale:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
 
-    # --- 1. RIEPILOGO GENERALE ---
+    # --- 1. RIEPILOGO GENERALE (Con Budget Alert!) ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
+
+        # Lettura Impostazioni
+        try:
+            df_imp = conn.read(worksheet="impostazioni", ttl="5s")
+            budget_max = float(df_imp[df_imp['Parametro'] == 'Budget Totale']['Valore'].values[0])
+        except:
+            budget_max = 10000.0 # Valore di backup
+            st.warning("Impossibile leggere il Budget Totale dal foglio 'impostazioni'. Uso valore predefinito 10.000€")
+
         lista_solo_confermati = []
         tot_conf, tot_potenziale = 0, 0
         dati_per_grafico = []
 
-        try:
-            for s in stanze_reali:
+        for s in stanze_reali:
+            try:
                 df_s = conn.read(worksheet=s, ttl="10s")
                 if df_s is not None and not df_s.empty:
                     df_s.columns = [str(c).strip() for c in df_s.columns]
@@ -89,17 +98,33 @@ else:
                                 tot_conf += df_s_c[col_p].sum()
                                 temp_df = pd.DataFrame({'Ambiente': s.capitalize(), 'Oggetto': df_s_c[col_o].astype(str), 'Importo': df_s_c[col_p]})
                                 lista_solo_confermati.append(temp_df)
-        except:
-            pass
+            except: continue
+
+        # --- SEZIONE BUDGET ALERT ---
+        percentuale = min(tot_conf / budget_max, 1.2) # Max 120% per la barra
+
+        st.subheader(f"📊 Stato del Budget (Limite: {budget_max:,.2f} EUR)")
+
+        if percentuale < 0.7:
+            st.progress(percentuale, text=f"Ottimo! Hai speso il {percentuale:.1%}")
+            st.success(f"Sei ampiamente nel budget. Ti restano {(budget_max - tot_conf):,.2f} EUR")
+        elif percentuale < 0.9:
+            st.progress(percentuale, text=f"Attenzione! Sei al {percentuale:.1%}")
+            st.warning(f"Ti stai avvicinando al limite. Budget residuo: {(budget_max - tot_conf):,.2f} EUR")
+        else:
+            st.progress(percentuale, text=f"ALLERTA! Sei al {percentuale:.1%}")
+            st.error(f"⚠️ Budget quasi esaurito o superato! Residuo: {(budget_max - tot_conf):,.2f} EUR")
+
+        st.divider()
 
         m1, m2, m3 = st.columns(3)
         m1.metric("CONFERMATO (S)", f"{tot_conf:,.2f} EUR")
         m2.metric("RESIDUO (N)", f"{(tot_potenziale - tot_conf):,.2f} EUR")
-        m3.metric("BUDGET TOTALE", f"{tot_potenziale:,.2f} EUR")
+        m3.metric("EFFETTIVO vs TARGET", f"{percentuale:.1%}")
 
         if dati_per_grafico:
             df_plot = pd.DataFrame(dati_per_grafico)
-            fig = px.pie(df_plot, values='Budget', names='Stanza', title="Ripartizione Budget", color_discrete_sequence=COLOR_PALETTE)
+            fig = px.pie(df_plot, values='Budget', names='Stanza', title="Ripartizione Budget Totale", color_discrete_sequence=COLOR_PALETTE)
             st.plotly_chart(fig, use_container_width=True)
 
         if lista_solo_confermati:
@@ -119,10 +144,11 @@ else:
             df_display['Anteprima'] = df_display['Foto']
             config_wish = {
                 "Anteprima": st.column_config.ImageColumn("Preview", width="medium"),
+                "Oggetto": st.column_config.TextColumn("Nome Oggetto", width="medium"),
                 "Foto": st.column_config.TextColumn("🔗 Link Foto"),
                 "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f"),
             }
-            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v5")
+            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v5_1")
             if st.button("💾 SALVA MODIFICHE"):
                 with st.spinner("Salvataggio..."):
                     df_to_save = df_edit_wish.drop(columns=['Anteprima'])
@@ -132,38 +158,31 @@ else:
                     time.sleep(2)
                     st.rerun()
 
-    # --- 3. STANZE (Con Calcolo Sconto!) ---
+    # --- 3. STANZE ---
     else:
         st.title(f"🏠 {selezione.capitalize()}")
         df = conn.read(worksheet=selezione, ttl="5s")
         if df is not None:
             df.columns = [str(c).strip() for c in df.columns]
-
-            # CONFIGURAZIONE COLONNE
             col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
             col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo', 'Costo'] if c in df.columns), None)
-
             config_stanza = {
                 col_s: st.column_config.SelectboxColumn("Scelta", options=["S", "N"]),
                 "Prezzo Pieno": st.column_config.NumberColumn("Prezzo Listino", format="%.2f EUR"),
                 "Sconto %": st.column_config.NumberColumn("Sconto %", format="%d%%"),
-                col_p: st.column_config.NumberColumn("Prezzo Finale (Auto)", format="%.2f EUR", help="Calcolato automaticamente se inserisci Prezzo Pieno e Sconto")
+                col_p: st.column_config.NumberColumn("Prezzo Finale", format="%.2f EUR")
             }
-
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_stanza, key=f"ed_{selezione}")
-
             if st.button("💾 SALVA E CALCOLA"):
-                with st.spinner("Calcolo sconti e salvataggio..."):
-                    # Logica di calcolo automatico
+                with st.spinner("Aggiornamento..."):
                     if "Prezzo Pieno" in df_edit.columns and "Sconto %" in df_edit.columns and col_p:
                         df_edit[col_p] = df_edit.apply(
                             lambda row: row["Prezzo Pieno"] * (1 - (row["Sconto %"] / 100))
-                            if pd.notnull(row["Prezzo Pieno"]) and pd.notnull(row["Sconto %"]) and row["Sconto %"] > 0
+                            if pd.notnull(row["Prezzo Pieno"]) and pd.notnull(row["Sconto %"])
                             else row[col_p], axis=1
                         )
-
                     conn.update(worksheet=selezione, data=df_edit)
-                    st.success("Dati aggiornati e sconti calcolati!")
+                    st.success("Salvataggio e calcoli completati!")
                     st.balloons()
                     time.sleep(2)
                     st.rerun()
