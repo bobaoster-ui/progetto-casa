@@ -55,7 +55,7 @@ if check_password():
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
     selezione = st.sidebar.selectbox("Menu:", ["Riepilogo Generale"] + stanze_reali)
 
-    if selezione == "Riepilogo Generale":
+if selezione == "Riepilogo Generale":
         lista_completa = []
         tot_conf = 0
 
@@ -63,16 +63,26 @@ if check_password():
             try:
                 df_s = conn.read(worksheet=s, ttl=0)
                 if df_s is not None and not df_s.empty:
-                    col_p = next((c for c in ['Importo Totale', 'Totale'] if c in df_s.columns), None)
-                    col_s = next((c for c in ['Acquista S/N', 'S/N'] if c in df_s.columns), None)
+                    # Pulizia nomi colonne
+                    df_s.columns = [str(c).strip() for c in df_s.columns]
+
+                    # Cerchiamo il prezzo tra varie opzioni possibili
+                    col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo', 'Costo'] if c in df_s.columns), None)
+                    # Cerchiamo la scelta S/N
+                    col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df_s.columns), None)
+
                     if col_p and col_s:
                         df_s[col_p] = pd.to_numeric(df_s[col_p], errors='coerce').fillna(0)
                         df_s_conf = df_s[df_s[col_s].astype(str).str.upper() == 'S'].copy()
                         if not df_s_conf.empty:
                             df_s_conf['Ambiente'] = s.capitalize()
+                            # Prendiamo solo le colonne che esistono davvero
                             lista_completa.append(df_s_conf[['Ambiente', 'Oggetto', col_p]])
                             tot_conf += df_s_conf[col_p].sum()
-            except: continue
+                    else:
+                        st.warning(f"Nella stanza {s} mancano le colonne 'Totale' o 'S/N'. Controlla il foglio Google!")
+            except Exception as e:
+                st.error(f"Errore nella stanza {s}: {e}")
 
         if lista_completa:
             df_final = pd.concat(lista_completa)
