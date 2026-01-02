@@ -32,8 +32,10 @@ def check_password():
 if check_password():
     conn = st.connection("gsheets", type=GSheetsConnection)
 
+# Sidebar per il Logout migliorata
     if st.sidebar.button("Logout 🚪"):
-        st.session_state["password_correct"] = False
+        # Svuota tutto lo stato della sessione per tornare al Login pulito
+        st.session_state.clear()
         st.rerun()
 
     st.title("🏠 Gestione Arredamento Professionale")
