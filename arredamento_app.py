@@ -5,24 +5,24 @@ import plotly.express as px
 from datetime import datetime
 from fpdf import FPDF
 
-# 1. CONFIGURAZIONE PAGINA (Release Candidate)
-st.set_page_config(page_title="Monitoraggio Arredamento RC1", layout="wide", page_icon="🏠")
+# 1. CONFIGURAZIONE PAGINA
+st.set_page_config(page_title="Monitoraggio Arredamento v3.8", layout="wide", page_icon="🏠")
 
-# Palette Colori coordinata al Logo (Blu Professionale e Oro)
+# Palette Colori Professionale
 COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
 
-# --- CLASSE PER IL PDF ---
+# --- CLASSE PER IL PDF (Corretta per evitare errori di caratteri speciali) ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(46, 117, 182)
         self.rect(0, 0, 210, 40, 'F')
-        self.set_font('Arial', 'B', 20)
+        self.set_font('Arial', 'B', 18)
         self.set_text_color(255, 255, 255)
         self.cell(0, 20, 'REPORT SPESE ARREDAMENTO', ln=True, align='C')
-        self.set_font('Arial', 'I', 12)
-        # Rispetto della Proprietà con accento (à)
-        testo_header = f'Proprietà: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
-        self.cell(0, 10, testo_header.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
+        self.set_font('Arial', 'I', 11)
+        # Proprietà con accento gestita in modo sicuro
+        testo_header = f'Proprieta: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
+        self.cell(0, 10, testo_header.replace("Proprieta", "Proprietà").encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
 
     def footer(self):
@@ -31,6 +31,7 @@ class PDF(FPDF):
         self.set_text_color(128, 128, 128)
         self.cell(0, 10, f'Pagina {self.page_no()}', align='C')
 
+# --- LOGIN ---
 if "password_correct" not in st.session_state:
     st.title("🔒 Accesso Riservato")
     u = st.text_input("Utente")
@@ -45,7 +46,7 @@ else:
 
     with st.sidebar:
         try:
-            st.image("logo.png", width=200)
+            st.image("logo.png", width=180)
         except:
             st.image("https://cdn-icons-png.flaticon.com/512/619/619153.png", width=80)
         st.markdown("### Gestione Jacopo")
@@ -55,7 +56,7 @@ else:
             st.rerun()
 
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
-    selezione = st.sidebar.selectbox("Naviga tra le stanze:", ["Riepilogo Generale"] + stanze_reali)
+    selezione = st.sidebar.selectbox("Menu:", ["Riepilogo Generale"] + stanze_reali)
 
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
@@ -63,10 +64,10 @@ else:
         tot_conf, tot_potenziale = 0, 0
         dati_per_grafico = []
 
-        with st.spinner("Analisi budget in corso..."):
+        with st.spinner("Sincronizzazione..."):
             for s in stanze_reali:
                 try:
-                    df_s = conn.read(worksheet=s, ttl=0)
+                    df_s = conn.read(worksheet=s, ttl=10) # ttl=10 riduce lo stress su Google
                     if df_s is not None and not df_s.empty:
                         df_s.columns = [str(c).strip() for c in df_s.columns]
                         col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo', 'Costo'] if c in df_s.columns), None)
@@ -89,57 +90,56 @@ else:
                 except: continue
 
         m1, m2, m3 = st.columns(3)
-        # Stile migliorato per le metriche
         m1.metric("CONFERMATO (S)", f"{tot_conf:,.2f} EUR")
         m2.metric("RESIDUO (N)", f"{(tot_potenziale - tot_conf):,.2f} EUR")
         m3.metric("BUDGET TOTALE", f"{tot_potenziale:,.2f} EUR")
 
         if dati_per_grafico:
             df_plot = pd.DataFrame(dati_per_grafico)
-            fig = px.pie(df_plot, values='Budget', names='Stanza',
-                         title="Ripartizione Budget tra gli Ambienti",
-                         color_discrete_sequence=COLOR_PALETTE)
-            fig.update_traces(textinfo='percent+label', hole=.3) # Grafico a ciambella più moderno
+            fig = px.pie(df_plot, values='Budget', names='Stanza', title="Ripartizione Spese", color_discrete_sequence=COLOR_PALETTE)
+            fig.update_traces(textinfo='percent+label', hole=.4)
             st.plotly_chart(fig, use_container_width=True)
 
         if lista_solo_confermati:
             st.markdown("---")
-            st.write("### 📋 Dettaglio Acquisti Confermati")
             df_final = pd.concat(lista_solo_confermati)
-            st.dataframe(df_final.style.format(subset=['Importo'], formatter="{:.2f} EUR"), use_container_width=True, hide_index=True)
+            st.write("### 📋 Oggetti da Acquistare (S)")
+            st.dataframe(df_final, use_container_width=True, hide_index=True)
 
+            # Generazione PDF Sicura
             pdf = PDF()
             pdf.add_page()
-            pdf.set_font("Arial", 'B', 12)
-            pdf.set_fill_color(240, 240, 240)
-            pdf.cell(40, 10, 'Ambiente', 1, 0, 'C', True)
-            pdf.cell(100, 10, 'Oggetto', 1, 0, 'C', True)
-            pdf.cell(50, 10, 'Importo', 1, 1, 'C', True)
+            pdf.set_font("Arial", 'B', 10)
+            pdf.cell(40, 10, 'Ambiente', 1)
+            pdf.cell(100, 10, 'Oggetto', 1)
+            pdf.cell(50, 10, 'Importo (EUR)', 1, 1)
 
-            pdf.set_font("Arial", '', 10)
+            pdf.set_font("Arial", '', 9)
             for _, row in df_final.iterrows():
-                ogg_clean = str(row['Oggetto']).encode('latin-1', 'ignore').decode('latin-1')
-                amb_clean = str(row['Ambiente']).encode('latin-1', 'ignore').decode('latin-1')
-                pdf.cell(40, 8, amb_clean, 1)
-                pdf.cell(100, 8, ogg_clean[:50], 1)
-                pdf.cell(50, 8, f"{row['Importo']:,.2f} EUR", 1, 1, 'R')
+                # Pulizia testi per il PDF
+                ogg = str(row['Oggetto']).encode('latin-1', 'ignore').decode('latin-1')
+                pdf.cell(40, 8, str(row['Ambiente']), 1)
+                pdf.cell(100, 8, ogg[:50], 1)
+                pdf.cell(50, 8, f"{row['Importo']:,.2f}", 1, 1, 'R')
 
-            st.download_button("📄 Esporta Report PDF", data=bytes(pdf.output()), file_name="Report_Jacopo_Finale.pdf")
+            st.download_button("📄 Scarica PDF", data=bytes(pdf.output()), file_name="Report_Arredamento.pdf")
 
     else:
-        st.title(f"🏠 Gestione {selezione.capitalize()}")
+        st.title(f"🏠 {selezione.capitalize()}")
         try:
-            df = conn.read(worksheet=selezione, ttl=0)
+            df = conn.read(worksheet=selezione, ttl=5)
             if df is not None:
                 df.columns = [str(c).strip() for c in df.columns]
                 col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
-                config = {col_s: st.column_config.SelectboxColumn("Acquista?", options=["S", "N"])} if col_s else {}
+                config = {col_s: st.column_config.SelectboxColumn("Scelta", options=["S", "N"])} if col_s else {}
                 df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic", key=f"ed_{selezione}")
 
                 c1, c2 = st.columns([1, 4])
                 if c1.button("💾 SALVA"):
-                    with st.spinner("Invio..."): conn.update(worksheet=selezione, data=df_edit)
-                    st.success("Dati aggiornati!")
+                    with st.spinner("Salvataggio..."):
+                        conn.update(worksheet=selezione, data=df_edit)
+                    st.success("Fatto!")
                     st.balloons()
                 if c2.button("Aggiorna 🔄"): st.rerun()
-        except Exception as e: st.error(f"Errore: {e}")
+        except Exception as e:
+            st.error(f"Attendi un istante e riprova: Google Sheets è occupato.")
