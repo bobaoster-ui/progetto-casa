@@ -7,7 +7,7 @@ from datetime import datetime
 from fpdf import FPDF
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento v3.3", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento v3.4", layout="wide", page_icon="🏠")
 
 # --- CLASSE PER IL PDF ---
 class PDF(FPDF):
@@ -18,7 +18,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 20, 'REPORT SPESE ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 12)
-        # Parola "Proprietà" con accento (codificata per FPDF)
+        # Parola "Proprietà" con accento gestita per FPDF
         testo_header = f'Proprietà: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo_header.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -126,19 +126,15 @@ if check_password():
             st.download_button("📄 Scarica Report PDF (Solo S)", data=bytes(pdf_output), file_name="Report_Jacopo.pdf")
 
     else:
-        # STANZA SINGOLA CON AGGIUNTA/CANCELLAZIONE RIGHE
+        # STANZA SINGOLA
         st.subheader(f"Ambiente: {selezione.capitalize()}")
         try:
             df = conn.read(worksheet=selezione, ttl=0)
             if df is not None:
                 df.columns = [str(c).strip() for c in df.columns]
                 col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
+                config = {col_s: st.column_config.SelectboxColumn("Acquista?", options=["S", "N"])} if col_s else {}
 
-                config = {}
-                if col_s:
-                    config[col_s] = st.column_config.SelectboxColumn("Acquista?", options=["S", "N"])
-
-                # ABILITIAMO AGGIUNTA E CANCELLAZIONE RIGHE (num_rows="dynamic")
                 df_edit = st.data_editor(
                     df,
                     use_container_width=True,
@@ -148,12 +144,18 @@ if check_password():
                     key=f"ed_{selezione}"
                 )
 
-                st.info("💡 Per aggiungere una riga clicca sull'ultima riga vuota. Per cancellare, seleziona la riga e premi 'Canc' o l'icona del cestino.")
+                # Layout pulsanti
+                col_btn1, col_btn2 = st.columns([1, 4])
 
-                if st.button(f"💾 SALVA MODIFICHE {selezione.upper()}"):
-                    with st.spinner("Salvataggio su Google Sheets..."):
+                if col_btn1.button(f"💾 SALVA {selezione.upper()}"):
+                    with st.spinner("Salvataggio in corso..."):
                         conn.update(worksheet=selezione, data=df_edit)
-                    st.success(f"✅ Modifiche salvate correttamente!")
+                    st.success(f"✅ Modifiche salvate con successo per {selezione.capitalize()}!")
+                    st.balloons() # Un piccolo tocco festoso per il successo!
+
+                # Il pulsante aggiorna vista è sempre utile per "pulire" la cache manuale
+                if col_btn2.button("Aggiorna Vista 🔄"):
                     st.rerun()
+
         except Exception as e:
             st.error(f"Errore: {e}")
