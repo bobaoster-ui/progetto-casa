@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V4.4", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V5.0", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
@@ -69,7 +69,7 @@ else:
 
         try:
             for s in stanze_reali:
-                df_s = conn.read(worksheet=s, ttl="1m")
+                df_s = conn.read(worksheet=s, ttl="10s")
                 if df_s is not None and not df_s.empty:
                     df_s.columns = [str(c).strip() for c in df_s.columns]
                     col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo', 'Costo'] if c in df_s.columns), None)
@@ -90,7 +90,7 @@ else:
                                 temp_df = pd.DataFrame({'Ambiente': s.capitalize(), 'Oggetto': df_s_c[col_o].astype(str), 'Importo': df_s_c[col_p]})
                                 lista_solo_confermati.append(temp_df)
         except:
-            st.info("Caricamento dashboard...")
+            pass
 
         m1, m2, m3 = st.columns(3)
         m1.metric("CONFERMATO (S)", f"{tot_conf:,.2f} EUR")
@@ -112,55 +112,58 @@ else:
     # --- 2. WISHLIST ---
     elif selezione == "✨ Wishlist":
         st.title("✨ La Tua Wishlist Visiva")
-        df_wish = conn.read(worksheet="desideri", ttl="10s")
+        df_wish = conn.read(worksheet="desideri", ttl="5s")
         if df_wish is not None:
             df_wish.columns = [str(c).strip() for c in df_wish.columns]
             df_display = df_wish.copy()
             df_display['Anteprima'] = df_display['Foto']
-
             config_wish = {
                 "Anteprima": st.column_config.ImageColumn("Preview", width="medium"),
-                "Oggetto": st.column_config.TextColumn("Nome Oggetto", width="medium"),
                 "Foto": st.column_config.TextColumn("🔗 Link Foto"),
-                "Link": st.column_config.LinkColumn("🔗 Link Sito"),
                 "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f"),
             }
-
-            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v4_4")
-
+            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v5")
             if st.button("💾 SALVA MODIFICHE"):
                 with st.spinner("Salvataggio..."):
                     df_to_save = df_edit_wish.drop(columns=['Anteprima'])
                     conn.update(worksheet="desideri", data=df_to_save)
-                    st.success("Modifiche salvate!")
+                    st.success("Salvato!")
                     st.balloons()
                     time.sleep(2)
                     st.rerun()
 
-            st.markdown("---")
-            st.subheader("🖼️ Galleria Rapida")
-            foto_validi = df_edit_wish[df_edit_wish['Foto'].astype(str).str.startswith('http', na=False)]
-            if not foto_validi.empty:
-                cols = st.columns(4)
-                for i, row in enumerate(foto_validi.itertuples()):
-                    with cols[i % 4]:
-                        st.image(row.Foto, caption=row.Oggetto, use_container_width=True)
-
-    # --- 3. STANZE ---
+    # --- 3. STANZE (Con Calcolo Sconto!) ---
     else:
         st.title(f"🏠 {selezione.capitalize()}")
-        df = conn.read(worksheet=selezione, ttl="10s")
+        df = conn.read(worksheet=selezione, ttl="5s")
         if df is not None:
             df.columns = [str(c).strip() for c in df.columns]
+
+            # CONFIGURAZIONE COLONNE
             col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
-            config_stanza = {col_s: st.column_config.SelectboxColumn("Scelta", options=["S", "N"], required=True)} if col_s else {}
+            col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo', 'Costo'] if c in df.columns), None)
+
+            config_stanza = {
+                col_s: st.column_config.SelectboxColumn("Scelta", options=["S", "N"]),
+                "Prezzo Pieno": st.column_config.NumberColumn("Prezzo Listino", format="%.2f EUR"),
+                "Sconto %": st.column_config.NumberColumn("Sconto %", format="%d%%"),
+                col_p: st.column_config.NumberColumn("Prezzo Finale (Auto)", format="%.2f EUR", help="Calcolato automaticamente se inserisci Prezzo Pieno e Sconto")
+            }
 
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_stanza, key=f"ed_{selezione}")
 
-            if st.button("💾 SALVA DATI"):
-                with st.spinner("Salvataggio..."):
+            if st.button("💾 SALVA E CALCOLA"):
+                with st.spinner("Calcolo sconti e salvataggio..."):
+                    # Logica di calcolo automatico
+                    if "Prezzo Pieno" in df_edit.columns and "Sconto %" in df_edit.columns and col_p:
+                        df_edit[col_p] = df_edit.apply(
+                            lambda row: row["Prezzo Pieno"] * (1 - (row["Sconto %"] / 100))
+                            if pd.notnull(row["Prezzo Pieno"]) and pd.notnull(row["Sconto %"]) and row["Sconto %"] > 0
+                            else row[col_p], axis=1
+                        )
+
                     conn.update(worksheet=selezione, data=df_edit)
-                    st.success("Dati salvati!")
+                    st.success("Dati aggiornati e sconti calcolati!")
                     st.balloons()
                     time.sleep(2)
                     st.rerun()
