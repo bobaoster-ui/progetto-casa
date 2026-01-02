@@ -1,1 +1,2 @@
-streamlit-gsheets
+st-gsheets-connection
+xlsxwriter
