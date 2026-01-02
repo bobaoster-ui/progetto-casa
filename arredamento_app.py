@@ -129,7 +129,7 @@ else:
         st.title("✨ Lista dei Desideri")
         st.info("Gli oggetti inseriti qui non vengono conteggiati nel budget del Riepilogo Generale.")
         try:
-            df_wish = conn.read(worksheet="wishlist", ttl=20)
+            df_wish = conn.read(worksheet="desideri", ttl=20)
             if df_wish is None or df_wish.empty:
                 df_wish = pd.DataFrame(columns=['Oggetto', 'Link', 'Prezzo Stimato', 'Note'])
 
