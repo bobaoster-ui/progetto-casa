@@ -74,7 +74,7 @@ if selezione == "Riepilogo":
             st.plotly_chart(fig_pie, use_container_width=True)
 
 
-# --- CASO B: STANZA SINGOLA CON RICALCOLO AUTOMATICO ---
+# --- CASO B: STANZA SINGOLA CON RICALCOLO DECIMALE ---
 else:
     st.subheader(f"Dettaglio: {selezione.capitalize()}")
     try:
@@ -82,19 +82,20 @@ else:
         if df is not None:
             df.columns = [str(c).strip() for c in df.columns]
 
-            # Identifichiamo le colonne necessarie
-            col_prezzo = next((c for c in ['Prezzo', 'Costo', 'Prezzo Unitario'] if c in df.columns), None)
-            col_quantita = next((c for c in ['Quantità', 'Q.tà', 'Pezzi'] if c in df.columns), None)
+            # Identificazione colonne
+            col_prezzo = next((c for c in ['Costo', 'Prezzo', 'Prezzo Unitario'] if c in df.columns), None)
+            col_quantita = next((c for c in ['Acquistato', 'Quantità', 'Q.tà'] if c in df.columns), None)
             col_totale = next((c for c in ['Importo Totale', 'Totale'] if c in df.columns), None)
             col_scelta = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
 
-            config_colonne = {}
+            config_colonne = {
+                # Specifichiamo che i prezzi devono avere 2 decimali nell'interfaccia
+                col_prezzo: st.column_config.NumberColumn(format="%.2f €"),
+                col_totale: st.column_config.NumberColumn(format="%.2f €", disabled=True)
+            }
+
             if col_scelta:
                 config_colonne[col_scelta] = st.column_config.SelectboxColumn("Acquista?", options=["S", "N"], required=True)
-
-            # Rendiamo la colonna Totale non modificabile manualmente (la calcoliamo noi)
-            if col_totale:
-                config_colonne[col_totale] = st.column_config.NumberColumn("Importo Totale", disabled=True, format="%.2f €")
 
             df_edit = st.data_editor(
                 df,
@@ -106,17 +107,25 @@ else:
             )
 
             if st.button(f"💾 SALVA E RICALCOLA {selezione.upper()}"):
-                with st.spinner("Ricalcolo importi e salvataggio..."):
-                    # TRUCCO: Ricalcoliamo il totale riga per riga prima di salvare
-                    if col_prezzo and col_quantita and col_totale:
-                        # Convertiamo in numeri per evitare errori
-                        p = pd.to_numeric(df_edit[col_prezzo], errors='coerce').fillna(0)
-                        q = pd.to_numeric(df_edit[col_quantita], errors='coerce').fillna(0)
-                        df_edit[col_totale] = p * q
+                with st.spinner("Calcolo preciso in corso..."):
+                    # Trasformiamo l'editor in un DataFrame pulito
+                    df_salvataggio = df_edit.copy()
 
-                    conn.update(worksheet=selezione, data=df_edit)
-                    st.success(f"Totale ricalcolato e salvato per {selezione}!")
+                    if col_prezzo and col_quantita and col_totale:
+                        # 1. Gestione stringhe: sostituiamo la virgola col punto se l'utente ha scritto a mano
+                        if df_salvataggio[col_prezzo].dtype == object:
+                            df_salvataggio[col_prezzo] = df_salvataggio[col_prezzo].str.replace(',', '.')
+
+                        # 2. Conversione forzata a float (decimale)
+                        p = pd.to_numeric(df_salvataggio[col_prezzo], errors='coerce').fillna(0).astype(float)
+                        q = pd.to_numeric(df_salvataggio[col_quantita], errors='coerce').fillna(0).astype(float)
+
+                        # 3. Calcolo e arrotondamento a 2 decimali
+                        df_salvataggio[col_totale] = (p * q).round(2)
+
+                    conn.update(worksheet=selezione, data=df_salvataggio)
+                    st.success(f"Dati salvati con decimali corretti!")
                     st.balloons()
                     st.rerun()
     except Exception as e:
-        st.error(f"Errore durante il ricalcolo: {e}")
+        st.error(f"Errore: {e}")
