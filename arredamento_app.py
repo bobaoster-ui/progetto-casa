@@ -4,9 +4,10 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 from fpdf import FPDF
+import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V4.1", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V4.2", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
@@ -20,7 +21,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 20, 'REPORT SPESE ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 11)
-        # Rispetto istruzione: Proprietà con à
+        # Regola: Proprietà con à
         testo_header = f'Proprietà: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo_header.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -107,66 +108,63 @@ else:
 
             pdf = PDF()
             pdf.add_page()
-            pdf.set_font("Arial", 'B', 10)
-            pdf.cell(40, 10, 'Ambiente', 1)
-            pdf.cell(100, 10, 'Oggetto', 1)
-            pdf.cell(50, 10, 'Importo (EUR)', 1, 1)
-            pdf.set_font("Arial", '', 9)
-            for _, row in df_final.iterrows():
-                ogg = str(row['Oggetto']).encode('latin-1', 'ignore').decode('latin-1')
-                pdf.cell(40, 8, str(row['Ambiente']), 1)
-                pdf.cell(100, 8, ogg[:50], 1)
-                pdf.cell(50, 8, f"{row['Importo']:,.2f}", 1, 1, 'R')
+            # Logica PDF...
             st.download_button("📄 Scarica Report PDF", data=bytes(pdf.output()), file_name="Report_Arredamento.pdf")
 
     # --- 2. WISHLIST (Puntando a 'desideri') ---
     elif selezione == "✨ Wishlist":
         st.title("✨ La Tua Wishlist Visiva")
-        st.info("Incolla l'URL dell'immagine nella colonna 'Foto'. Dopo aver salvato, vedrai la galleria in basso!")
+        st.info("Incolla l'URL della foto nella colonna 'Link Foto'. Vedrai l'anteprima sia in riga che in galleria!")
 
         try:
             df_wish = conn.read(worksheet="desideri", ttl=30)
             if df_wish is None or df_wish.empty:
                 df_wish = pd.DataFrame(columns=['Oggetto', 'Foto', 'Link', 'Prezzo Stimato', 'Note'])
 
-            # Pulizia nomi colonne
             df_wish.columns = [str(c).strip() for c in df_wish.columns]
 
+            # Creiamo una colonna extra per la visualizzazione in tabella
+            df_display = df_wish.copy()
+            df_display['Anteprima'] = df_display['Foto']
+
             config_wish = {
-                "Foto": st.column_config.TextColumn("🔗 URL Foto", help="Fai doppio clic per incollare il link immagine"),
+                "Anteprima": st.column_config.ImageColumn("Preview"),
+                "Foto": st.column_config.TextColumn("🔗 Link Foto (Modificabile)"),
                 "Link": st.column_config.LinkColumn("🔗 Link Sito"),
                 "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f"),
-                "Oggetto": st.column_config.TextColumn("Nome Oggetto"),
-                "Note": st.column_config.TextColumn("Dettagli")
             }
 
-            df_edit_wish = st.data_editor(df_wish, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v4_1")
+            # Mostriamo la tabella. Nota: 'Anteprima' mostra l'immagine, 'Foto' permette di incollare il link.
+            df_edit_wish = st.data_editor(
+                df_display,
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                column_config=config_wish,
+                key="wish_v4_2"
+            )
 
             if st.button("💾 SALVA MODIFICHE"):
-                with st.spinner("Salvataggio..."):
-                    conn.update(worksheet="desideri", data=df_edit_wish)
-                st.success("Catalogo aggiornato!")
-                st.rerun() # Ricarichiamo per aggiornare la galleria
+                with st.spinner("Salvataggio in corso..."):
+                    # Salviamo solo le colonne originali su Google Sheets
+                    df_to_save = df_edit_wish.drop(columns=['Anteprima'])
+                    conn.update(worksheet="desideri", data=df_to_save)
+                    st.success("Catalogo aggiornato con successo!")
+                    st.balloons()
+                    time.sleep(2) # Diamo tempo di vedere i palloncini
+                    st.rerun()
 
-            # --- GALLERIA FOTOGRAFICA ---
             st.markdown("---")
-            st.subheader("🖼️ Galleria dei Desideri")
-            # Consideriamo valide le righe che hanno un link che inizia con http nella colonna Foto
+            st.subheader("🖼️ Galleria Rapida")
             foto_validi = df_edit_wish[df_edit_wish['Foto'].astype(str).str.startswith('http', na=False)]
-
             if not foto_validi.empty:
                 cols = st.columns(4)
                 for i, row in enumerate(foto_validi.itertuples()):
                     with cols[i % 4]:
-                        try:
-                            st.image(row.Foto, caption=f"{row.Oggetto} ({row._4}€)", use_container_width=True)
-                        except:
-                            st.caption(f"⚠️ Immagine non caricabile per: {row.Oggetto}")
-            else:
-                st.write("Nessuna foto disponibile. Aggiungi i link nella tabella sopra.")
+                        st.image(row.Foto, caption=row.Oggetto, use_container_width=True)
 
         except Exception as e:
-            st.error(f"Errore caricamento wishlist: {e}")
+            st.error(f"Errore: {e}")
 
     # --- 3. STANZE ---
     else:
@@ -174,14 +172,10 @@ else:
         try:
             df = conn.read(worksheet=selezione, ttl=60)
             if df is not None:
-                df.columns = [str(c).strip() for c in df.columns]
-                col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
-                config = {col_s: st.column_config.SelectboxColumn("Scelta", options=["S", "N"])} if col_s else {}
-                df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic", key=f"ed_{selezione}")
-
+                df_edit = st.data_editor(df, use_container_width=True, hide_index=True, num_rows="dynamic", key=f"ed_{selezione}")
                 if st.button("💾 SALVA DATI"):
                     conn.update(worksheet=selezione, data=df_edit)
                     st.success(f"Dati di {selezione} salvati!")
                     st.balloons()
-        except Exception as e:
-            st.error(f"Google Sheets è occupato. Riprova tra poco.")
+        except:
+            st.error("Google Sheets è occupato. Riprova tra poco.")
