@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V5.8", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V5.9", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
@@ -72,11 +72,11 @@ else:
                 df_s = conn.read(worksheet=s, ttl="5s")
                 if df_s is not None and not df_s.empty:
                     df_s.columns = [str(c).strip() for c in df_s.columns]
-                    col_p = next((c for c in ['Prezzo Finale', 'Totale', 'Prezzo'] if c in df_s.columns), None)
+                    col_p = 'Importo Totale'
                     col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df_s.columns), None)
                     col_o = next((c for c in ['Oggetto', 'Articolo', 'Descrizione'] if c in df_s.columns), df_s.columns[0])
 
-                    if col_p:
+                    if col_p in df_s.columns:
                         df_s[col_p] = pd.to_numeric(df_s[col_p], errors='coerce').fillna(0)
                         val_s = df_s[col_p].sum()
                         tot_potenziale += val_s
@@ -131,7 +131,7 @@ else:
                 "Prezzo Stimato": st.column_config.NumberColumn("Budget €", format="%.2f"),
             }
 
-            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v5_8")
+            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v5_9")
 
             if st.button("💾 SALVA WISHLIST"):
                 with st.spinner("Salvataggio..."):
@@ -139,18 +139,17 @@ else:
                     conn.update(worksheet="desideri", data=df_to_save)
                     st.balloons()
                     st.success("Salvataggio riuscito!")
-                    time.sleep(2)
+                    time.sleep(1)
                     st.rerun()
 
-    # --- 3. STANZE (Logica Calcoli Aggiornata) ---
+    # --- 3. STANZE (Logica Quantità Decimale e Costo Manuale/Calcolato) ---
     else:
         st.title(f"🏠 {selezione.capitalize()}")
         df = conn.read(worksheet=selezione, ttl="5s")
         if df is not None:
             df.columns = [str(c).strip() for c in df.columns]
-            # Fix testo per Note e Oggetto
             for col in df.columns:
-                if col not in ['Prezzo Pieno', 'Sconto %', 'Costo', 'Prezzo Finale', 'Acquista S/N', 'Acquistato']:
+                if col not in ['Prezzo Pieno', 'Sconto %', 'Costo', 'Importo Totale', 'Acquistato']:
                     df[col] = df[col].astype(str).replace('nan', '')
 
             col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), 'Acquista S/N')
@@ -159,29 +158,32 @@ else:
                 col_s: st.column_config.SelectboxColumn("Scelta", options=["S", "N"]),
                 "Prezzo Pieno": st.column_config.NumberColumn("Listino €", format="%.2f"),
                 "Sconto %": st.column_config.NumberColumn("Sconto %"),
-                "Costo": st.column_config.NumberColumn("Costo Unit. €", format="%.2f", disabled=True), # Calcolato
-                "Acquistato": st.column_config.NumberColumn("Q.tà (Pezzi)", min_value=1, default=1),
-                "Prezzo Finale": st.column_config.NumberColumn("Totale Riga €", format="%.2f", disabled=True), # Calcolato
+                "Costo": st.column_config.NumberColumn("Costo Unit. €", format="%.2f", help="Puoi inserirlo a mano o farlo calcolare dallo sconto"),
+                "Acquistato": st.column_config.NumberColumn("Quantità", format="%.2f", min_value=0.0, step=0.1),
+                "Importo Totale": st.column_config.NumberColumn("Importo Totale €", format="%.2f", disabled=True),
                 "Note": st.column_config.TextColumn("Note", width="large")
             }
 
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_stanza, key=f"ed_{selezione}")
 
-            if st.button("💾 SALVA E CALCOLA"):
-                with st.spinner("Calcolo in corso..."):
-                    # Trasformo in numerico per sicurezza
-                    df_edit['Prezzo Pieno'] = pd.to_numeric(df_edit['Prezzo Pieno'], errors='coerce').fillna(0)
-                    df_edit['Sconto %'] = pd.to_numeric(df_edit['Sconto %'], errors='coerce').fillna(0)
-                    df_edit['Acquistato'] = pd.to_numeric(df_edit['Acquistato'], errors='coerce').fillna(1)
+            if st.button("💾 SALVA E RICALCOLA"):
+                with st.spinner("Aggiornamento totali..."):
+                    # 1. Conversione in numeri
+                    pp = pd.to_numeric(df_edit['Prezzo Pieno'], errors='coerce').fillna(0)
+                    sc = pd.to_numeric(df_edit['Sconto %'], errors='coerce').fillna(0)
+                    ac = pd.to_numeric(df_edit['Acquistato'], errors='coerce').fillna(0)
+                    cu = pd.to_numeric(df_edit['Costo'], errors='coerce').fillna(0)
 
-                    # 1. Calcolo il Costo (Unitario scontato)
-                    df_edit['Costo'] = df_edit['Prezzo Pieno'] * (1 - (df_edit['Sconto %'] / 100))
+                    # 2. Logica Costo: se PP e SC sono presenti, ricalcola CU, altrimenti tieni CU attuale
+                    for i in range(len(df_edit)):
+                        if pp[i] > 0 and sc[i] > 0:
+                            df_edit.at[i, 'Costo'] = pp[i] * (1 - (sc[i] / 100))
 
-                    # 2. Calcolo il Prezzo Finale (Costo * Quantità)
-                    df_edit['Prezzo Finale'] = df_edit['Costo'] * df_edit['Acquistato']
+                    # 3. Logica Importo Totale: Costo * Acquistato (Sempre rifatto)
+                    df_edit['Importo Totale'] = df_edit['Costo'] * df_edit['Acquistato']
 
                     conn.update(worksheet=selezione, data=df_edit)
                     st.balloons()
-                    st.success("Calcoli completati e salvati!")
-                    time.sleep(2)
+                    st.success("Salvataggio e ricalcolo completati!")
+                    time.sleep(1.5)
                     st.rerun()
