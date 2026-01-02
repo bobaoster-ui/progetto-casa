@@ -124,34 +124,37 @@ else:
                 pdf.cell(50, 8, f"{row['Importo']:,.2f}", 1, 1, 'R')
             st.download_button("📄 Esporta Report PDF", data=bytes(pdf.output()), file_name="Report_Arredamento.pdf")
 
-    # --- 2. WISHLIST (Ora chiamata 'desideri' su Google Sheets) ---
+# --- 2. WISHLIST (Puntando al foglio 'desideri') ---
         elif selezione == "✨ Wishlist":
             st.title("✨ Lista dei Desideri")
-            st.info("Gli oggetti inseriti qui non vengono conteggiati nel budget del Riepilogo Generale.")
-        try:
-            # Abbiamo cambiato il nome qui...
-            df_wish = conn.read(worksheet="desideri", ttl=60)
+            st.info("Gli oggetti qui inseriti non influenzano il budget delle stanze.")
 
-            if df_wish is None or df_wish.empty:
-                df_wish = pd.DataFrame(columns=['Oggetto', 'Link', 'Prezzo Stimato', 'Note'])
+        # Usiamo un TTL ancora più alto (120 secondi) per far riposare la connessione
+            try:
+                df_wish = conn.read(worksheet="desideri", ttl=120)
 
-            config_wish = {
-                "Link": st.column_config.LinkColumn("🔗 Link Sito"),
-                "Prezzo Stimato": st.column_config.NumberColumn("Prezzo Stimato (EUR)", format="%.2f EUR"),
-                "Oggetto": st.column_config.TextColumn("Nome Oggetto"),
-                "Note": st.column_config.TextColumn("Dettagli")
-            }
+            if df_wish is not None:
+                config_wish = {
+                    "Link": st.column_config.LinkColumn("🔗 Link Sito"),
+                    "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f"),
+                }
 
-            df_edit_wish = st.data_editor(df_wish, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_stable")
+                df_edit_wish = st.data_editor(
+                    df_wish,
+                    use_container_width=True,
+                    hide_index=True,
+                    num_rows="dynamic",
+                    column_config=config_wish,
+                    key="wish_final_v1"
+                )
 
-            if st.button("💾 SALVA WISHLIST"):
-                with st.spinner("Salvataggio..."):
-                    # ...quindi dobbiamo cambiarlo anche qui sotto!
-                    conn.update(worksheet="desideri", data=df_edit_wish)
-                st.success("Lista desideri aggiornata!")
-                st.balloons()
+                if st.button("💾 SALVA DESIDERI"):
+                    with st.spinner("Salvataggio nel foglio 'desideri'..."):
+                        conn.update(worksheet="desideri", data=df_edit_wish)
+                    st.success("Salvataggio completato!")
+                    st.balloons()
         except Exception as e:
-            st.error("Errore durante il salvataggio. Verifica che il foglio si chiami ancora 'desideri'.")
+            st.warning("⚠️ Google Sheets sta elaborando le modifiche. Se non vedi i dati, prova a ricaricare la pagina tra un istante.")
 
     # --- 3. STANZE SINGOLE ---
     else:
