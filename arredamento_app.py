@@ -7,7 +7,7 @@ from datetime import datetime
 from fpdf import FPDF
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento v2.5", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento v2.6", layout="wide", page_icon="🏠")
 
 # --- CLASSE PER IL PDF ---
 class PDF(FPDF):
@@ -18,14 +18,14 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 20, 'REPORT SPESE ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 12)
-        self.cell(0, 10, 'Proprietà: Jacopo', ln=True, align='C')
+        self.cell(0, 10, f'Proprieta: Jacopo - {datetime.now().strftime("%d/%m/%Y")}', ln=True, align='C')
         self.ln(15)
 
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
         self.set_text_color(128, 128, 128)
-        self.cell(0, 10, f'Pagina {self.page_no()} - Generato il {datetime.now().strftime("%d/%m/%Y")}', align='C')
+        self.cell(0, 10, f'Pagina {self.page_no()}', align='C')
 
 # --- FUNZIONE DI LOGIN ---
 def check_password():
@@ -42,47 +42,67 @@ def check_password():
         return False
     return True
 
-# --- LOGICA PRINCIPALE ---
 if check_password():
     conn = st.connection("gsheets", type=GSheetsConnection)
 
-    # Sidebar
     if st.sidebar.button("Logout 🚪"):
         st.session_state.clear()
         st.rerun()
 
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
-    # DEFINIAMO SELEZIONE QUI FUORI, COSI' NON DA' NameError
     selezione = st.sidebar.selectbox("Menu:", ["Riepilogo Generale"] + stanze_reali)
 
     st.title("🏠 Gestione Arredamento Professionale")
 
     if selezione == "Riepilogo Generale":
-        st.subheader("📊 Analisi Budget")
         lista_completa = []
         tot_conf = 0
+        tot_potenziale = 0
+        dati_grafico = []
 
         for s in stanze_reali:
             try:
                 df_s = conn.read(worksheet=s, ttl=0)
                 if df_s is not None and not df_s.empty:
                     df_s.columns = [str(c).strip() for c in df_s.columns]
-                    col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo'] if c in df_s.columns), None)
-                    col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df_s.columns), None)
 
-                    if col_p and col_s:
+                    # Identificazione colonne flessibile
+                    col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo', 'Costo'] if c in df_s.columns), None)
+                    col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta', 'Acquista'] if c in df_s.columns), None)
+
+                    if col_p:
                         df_s[col_p] = pd.to_numeric(df_s[col_p], errors='coerce').fillna(0)
-                        df_s_conf = df_s[df_s[col_s].astype(str).str.upper() == 'S'].copy()
-                        if not df_s_conf.empty:
-                            df_s_conf['Ambiente'] = s.capitalize()
-                            lista_completa.append(df_s_conf[['Ambiente', 'Oggetto', col_p]])
-                            tot_conf += df_s_conf[col_p].sum()
+                        s_pot = df_s[col_p].sum()
+                        tot_potenziale += s_pot
+
+                        s_conf = 0
+                        if col_s:
+                            # Pulizia della colonna S/N (toglie spazi e rende maiuscolo)
+                            df_s[col_s] = df_s[col_s].astype(str).str.strip().str.upper()
+                            df_s_conf = df_s[df_s[col_s] == 'S'].copy()
+                            if not df_s_conf.empty:
+                                s_conf = df_s_conf[col_p].sum()
+                                tot_conf += s_conf
+                                df_s_conf['Ambiente'] = s.capitalize()
+                                lista_completa.append(df_s_conf[['Ambiente', 'Oggetto', col_p]])
+
+                        dati_grafico.append({"Stanza": s.capitalize(), "Spesa": s_conf})
             except: continue
+
+        # Metriche in primo piano
+        c1, c2 = st.columns(2)
+        c1.metric("TOTALE CONFERMATO (S)", f"{tot_conf:,.2f} €")
+        c2.metric("BUDGET TOTALE (S+N)", f"{tot_potenziale:,.2f} €")
 
         if lista_completa:
             df_final = pd.concat(lista_completa)
-            st.metric("Totale Confermato (S)", f"{tot_conf:,.2f} €")
+            st.write("### Dettaglio oggetti confermati")
             st.dataframe(df_final, use_container_width=True, hide_index=True)
+
+            # Grafico
+            df_plot = pd.DataFrame(dati_grafico)
+            fig = px.pie(df_plot, values='Spesa', names='Stanza', title="Distribuzione Spese Confermate")
+            st.plotly_chart(fig)
 
             # --- GENERAZIONE PDF ---
             pdf = PDF()
@@ -99,44 +119,30 @@ if check_password():
                 pdf.cell(100, 8, str(row['Oggetto'])[:50], 1)
                 pdf.cell(50, 8, f"{row.iloc[2]:,.2f} EUR", 1, 1, 'R')
 
-            pdf.ln(5)
-            pdf.set_font("Arial", 'B', 12)
-            pdf.cell(140, 10, 'TOTALE GENERALE', 0)
-            pdf.cell(50, 10, f"{tot_conf:,.2f} EUR", 0, 1, 'R')
-
             pdf_output = pdf.output()
-            st.sidebar.download_button(
-                label="📄 Scarica Report PDF",
-                data=bytes(pdf_output),
-                file_name=f"Report_Jacopo_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf"
-            )
+            st.sidebar.download_button("📄 Scarica Report PDF", data=bytes(pdf_output), file_name="Report_Jacopo.pdf")
         else:
-            st.info("Nessun oggetto confermato (S) trovato nelle stanze.")
+            st.info("Nessun oggetto con 'S' trovato. Controlla che la colonna S/N contenga solo la lettera S.")
 
     else:
-        # SEZIONE STANZA SINGOLA
+        # STANZA SINGOLA
         st.subheader(f"Ambiente: {selezione.capitalize()}")
         try:
             df = conn.read(worksheet=selezione, ttl=0)
             if df is not None:
                 df.columns = [str(c).strip() for c in df.columns]
-                # Definiamo le colonne per l'editor
-                col_prezzo = next((c for c in ['Costo', 'Prezzo', 'Prezzo Unitario'] if c in df.columns), None)
-                col_quantita = next((c for c in ['Acquistato', 'Quantità'] if c in df.columns), None)
-                col_totale = next((c for c in ['Importo Totale', 'Totale'] if c in df.columns), None)
-                col_scelta = next((c for c in ['Acquista S/N', 'S/N'] if c in df.columns), None)
+                col_scelta = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
 
-                df_edit = st.data_editor(df, use_container_width=True, hide_index=True, key=f"ed_{selezione}")
+                # Ripristiniamo il menu a tendina S/N nell'editor
+                config = {}
+                if col_scelta:
+                    config[col_scelta] = st.column_config.SelectboxColumn("Acquista?", options=["S", "N"])
+
+                df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, key=f"ed_{selezione}")
 
                 if st.button(f"💾 SALVA {selezione.upper()}"):
-                    df_save = df_edit.copy()
-                    if col_prezzo and col_quantita and col_totale:
-                        p = pd.to_numeric(df_save[col_prezzo], errors='coerce').fillna(0)
-                        q = pd.to_numeric(df_save[col_quantita], errors='coerce').fillna(0)
-                        df_save[col_totale] = (p * q).round(2)
-                    conn.update(worksheet=selezione, data=df_save)
+                    conn.update(worksheet=selezione, data=df_edit)
                     st.success("Dati aggiornati!")
                     st.rerun()
         except Exception as e:
-            st.error(f"Errore nel caricamento della stanza: {e}")
+            st.error(f"Errore: {e}")
