@@ -6,12 +6,12 @@ from datetime import datetime
 from fpdf import FPDF
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento v3.8", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento v3.9", layout="wide", page_icon="🏠")
 
-# Palette Colori Professionale
+# Palette Colori Professionale (Coordinata al Logo)
 COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
 
-# --- CLASSE PER IL PDF (Corretta per evitare errori di caratteri speciali) ---
+# --- CLASSE PER IL PDF ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(46, 117, 182)
@@ -20,9 +20,9 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 20, 'REPORT SPESE ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 11)
-        # Proprietà con accento gestita in modo sicuro
-        testo_header = f'Proprieta: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
-        self.cell(0, 10, testo_header.replace("Proprieta", "Proprietà").encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
+        # Regola: Proprietà con à
+        testo_header = f'Proprietà: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
+        self.cell(0, 10, testo_header.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
 
     def footer(self):
@@ -56,7 +56,7 @@ else:
             st.rerun()
 
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
-    selezione = st.sidebar.selectbox("Menu:", ["Riepilogo Generale"] + stanze_reali)
+    selezione = st.sidebar.selectbox("Menu Principale:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
 
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
@@ -64,10 +64,10 @@ else:
         tot_conf, tot_potenziale = 0, 0
         dati_per_grafico = []
 
-        with st.spinner("Sincronizzazione..."):
+        with st.spinner("Sincronizzazione dati in corso..."):
             for s in stanze_reali:
                 try:
-                    df_s = conn.read(worksheet=s, ttl=10) # ttl=10 riduce lo stress su Google
+                    df_s = conn.read(worksheet=s, ttl=10)
                     if df_s is not None and not df_s.empty:
                         df_s.columns = [str(c).strip() for c in df_s.columns]
                         col_p = next((c for c in ['Importo Totale', 'Totale', 'Prezzo', 'Costo'] if c in df_s.columns), None)
@@ -96,35 +96,56 @@ else:
 
         if dati_per_grafico:
             df_plot = pd.DataFrame(dati_per_grafico)
-            fig = px.pie(df_plot, values='Budget', names='Stanza', title="Ripartizione Spese", color_discrete_sequence=COLOR_PALETTE)
+            fig = px.pie(df_plot, values='Budget', names='Stanza', title="Ripartizione Budget", color_discrete_sequence=COLOR_PALETTE)
             fig.update_traces(textinfo='percent+label', hole=.4)
             st.plotly_chart(fig, use_container_width=True)
 
         if lista_solo_confermati:
             st.markdown("---")
+            st.write("### 📋 Riepilogo Acquisti Confermati (S)")
             df_final = pd.concat(lista_solo_confermati)
-            st.write("### 📋 Oggetti da Acquistare (S)")
-            st.dataframe(df_final, use_container_width=True, hide_index=True)
+            st.dataframe(df_final.style.format(subset=['Importo'], formatter="{:.2f} EUR"), use_container_width=True, hide_index=True)
 
-            # Generazione PDF Sicura
             pdf = PDF()
             pdf.add_page()
             pdf.set_font("Arial", 'B', 10)
             pdf.cell(40, 10, 'Ambiente', 1)
             pdf.cell(100, 10, 'Oggetto', 1)
             pdf.cell(50, 10, 'Importo (EUR)', 1, 1)
-
             pdf.set_font("Arial", '', 9)
             for _, row in df_final.iterrows():
-                # Pulizia testi per il PDF
                 ogg = str(row['Oggetto']).encode('latin-1', 'ignore').decode('latin-1')
                 pdf.cell(40, 8, str(row['Ambiente']), 1)
                 pdf.cell(100, 8, ogg[:50], 1)
                 pdf.cell(50, 8, f"{row['Importo']:,.2f}", 1, 1, 'R')
+            st.download_button("📄 Scarica Report PDF", data=bytes(pdf.output()), file_name="Report_Arredamento.pdf")
 
-            st.download_button("📄 Scarica PDF", data=bytes(pdf.output()), file_name="Report_Arredamento.pdf")
+    elif selezione == "✨ Wishlist":
+        st.title("✨ La Lista dei Desideri")
+        st.info("Aggiungi qui gli oggetti che ti ispirano. I prezzi inseriti qui NON influenzano il budget totale.")
+        try:
+            df_wish = conn.read(worksheet="wishlist", ttl=5)
+            if df_wish is not None:
+                # Configurazione speciale per rendere il link cliccabile
+                config_wish = {
+                    "Link": st.column_config.LinkColumn("🔗 Vai al sito"),
+                    "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f EUR"),
+                    "Oggetto": st.column_config.TextColumn("Cosa ti piace?"),
+                    "Note": st.column_config.TextColumn("Note e Dettagli")
+                }
+
+                df_edit_wish = st.data_editor(df_wish, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_editor")
+
+                if st.button("💾 AGGIORNA LISTA DESIDERI"):
+                    with st.spinner("Salvataggio..."):
+                        conn.update(worksheet="wishlist", data=df_edit_wish)
+                    st.success("La tua wishlist è stata aggiornata!")
+                    st.balloons()
+        except Exception as e:
+            st.error("Errore nel caricamento della Wishlist. Verifica che il foglio 'wishlist' esista su Google Sheets.")
 
     else:
+        # GESTIONE STANZE SINGOLE
         st.title(f"🏠 {selezione.capitalize()}")
         try:
             df = conn.read(worksheet=selezione, ttl=5)
@@ -135,11 +156,10 @@ else:
                 df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic", key=f"ed_{selezione}")
 
                 c1, c2 = st.columns([1, 4])
-                if c1.button("💾 SALVA"):
-                    with st.spinner("Salvataggio..."):
-                        conn.update(worksheet=selezione, data=df_edit)
-                    st.success("Fatto!")
+                if c1.button("💾 SALVA DATI"):
+                    with st.spinner("Invio..."): conn.update(worksheet=selezione, data=df_edit)
+                    st.success(f"Dati di {selezione} salvati!")
                     st.balloons()
                 if c2.button("Aggiorna 🔄"): st.rerun()
         except Exception as e:
-            st.error(f"Attendi un istante e riprova: Google Sheets è occupato.")
+            st.error(f"Google Sheets è momentaneamente occupato. Riprova tra pochi secondi.")
