@@ -110,28 +110,46 @@ else:
             # Logica PDF... (omessa qui per brevità ma presente nel tuo file finale)
             st.download_button("📄 Scarica Report PDF", data=bytes(pdf.output()), file_name="Report_Arredamento.pdf")
 
-    # --- WISHLIST (Puntando a 'desideri') ---
+# --- 2. WISHLIST VISUALE (Puntando a 'desideri') ---
     elif selezione == "✨ Wishlist":
-        st.title("✨ Lista dei Desideri")
-        st.info("Usa il foglio 'desideri' per i tuoi sogni d'arredo.")
+        st.title("✨ La Tua Wishlist Visiva")
+        st.info("Incolla l'indirizzo di un'immagine nella colonna 'Foto' per vedere l'anteprima!")
+
         try:
-            df_wish = conn.read(worksheet="desideri", ttl=60)
-            if df_wish is None or df_wish.empty:
-                df_wish = pd.DataFrame(columns=['Oggetto', 'Link', 'Prezzo Stimato', 'Note'])
+            # Leggiamo il foglio 'desideri'
+            df_wish = conn.read(worksheet="desideri", ttl=20)
 
-            config_wish = {
-                "Link": st.column_config.LinkColumn("🔗 Link Sito"),
-                "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f"),
-            }
+            if df_wish is not None:
+                # Pulizia nomi colonne per sicurezza
+                df_wish.columns = [str(c).strip() for c in df_wish.columns]
 
-            df_edit_wish = st.data_editor(df_wish, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_stable_final")
+                # CONFIGURAZIONE COLONNE (La magia è qui!)
+                config_wish = {
+                    "Foto": st.column_config.ImageColumn("Anteprima", help="Anteprima dell'oggetto"),
+                    "Link": st.column_config.LinkColumn("🔗 Link Sito"),
+                    "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f EUR"),
+                    "Oggetto": st.column_config.TextColumn("Cosa ti piace?", width="medium"),
+                    "Note": st.column_config.TextColumn("Dettagli", width="large")
+                }
 
-            if st.button("💾 SALVA WISHLIST"):
-                conn.update(worksheet="desideri", data=df_edit_wish)
-                st.success("Desideri salvati!")
-                st.balloons()
+                # Visualizzazione con Data Editor
+                df_edit_wish = st.data_editor(
+                    df_wish,
+                    use_container_width=True,
+                    hide_index=True,
+                    num_rows="dynamic",
+                    column_config=config_wish,
+                    key="wish_visual_v4"
+                )
+
+                if st.button("💾 SALVA MODIFICHE VISUALI"):
+                    with st.spinner("Aggiornamento catalogo..."):
+                        conn.update(worksheet="desideri", data=df_edit_wish)
+                    st.success("Catalogo sogni aggiornato!")
+                    st.balloons()
+
         except Exception as e:
-            st.error("Google Sheets è occupato. Attendi 60 secondi.")
+            st.error("Assicurati che la colonna 'Foto' esista nel foglio 'desideri' su Google Sheets.")
 
     # --- STANZE ---
     else:
