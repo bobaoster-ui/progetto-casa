@@ -155,29 +155,63 @@ else:
             pdf.cell(50, 10, f"{tot_conf:,.2f}", 1, 1, 'R')
             st.download_button("📄 Scarica Report PDF", data=bytes(pdf.output()), file_name="Report_Arredamento_Jacopo.pdf")
 
-    # --- 2. WISHLIST ---
+# --- 2. WISHLIST (Migliorata per Link e Visibilità) ---
     elif selezione == "✨ Wishlist":
         st.title("✨ La Tua Wishlist Visiva")
+        st.info("Clicca sull'icona della catena 🔗 nel link per aprire il sito. Trascina le colonne se vuoi riordinarle.")
+
         df_wish = conn.read(worksheet="desideri", ttl="5s")
         if df_wish is not None:
             df_wish.columns = [str(c).strip() for c in df_wish.columns]
             df_display = df_wish.copy()
+
+            # Creiamo l'anteprima
             df_display['Anteprima'] = df_display['Foto']
+
+            # ORDINE COLONNE: Portiamo l'anteprima all'inizio per evitare lo scrolling a destra
+            cols_order = ['Oggetto', 'Anteprima', 'Prezzo Stimato', 'Link', 'Foto', 'Note']
+            # Filtriamo solo le colonne che esistono davvero
+            cols_order = [c for c in cols_order if c in df_display.columns]
+            df_display = df_display[cols_order]
+
             config_wish = {
                 "Anteprima": st.column_config.ImageColumn("Preview", width="medium"),
                 "Oggetto": st.column_config.TextColumn("Nome Oggetto", width="medium"),
-                "Foto": st.column_config.TextColumn("🔗 Link Foto"),
                 "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f"),
+                "Link": st.column_config.LinkColumn("🔗 Vai al Sito", display_text="Apri Link"), # Ora è un tasto cliccabile
+                "Foto": st.column_config.TextColumn("URL Foto (Edit)"),
+                "Note": st.column_config.TextColumn("Note", width="large"),
             }
-            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v5_3")
+
+            df_edit_wish = st.data_editor(
+                df_display,
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                column_config=config_wish,
+                key="wish_v5_4"
+            )
+
             if st.button("💾 SALVA MODIFICHE"):
                 with st.spinner("Salvataggio..."):
+                    # Rimuoviamo la colonna fittizia Anteprima prima di salvare su Sheets
                     df_to_save = df_edit_wish.drop(columns=['Anteprima'])
                     conn.update(worksheet="desideri", data=df_to_save)
-                    st.success("Salvato!")
+                    st.success("Catalogo aggiornato!")
                     st.balloons()
                     time.sleep(2)
                     st.rerun()
+
+            # Galleria in basso rimane come backup visivo
+            st.markdown("---")
+            st.subheader("🖼️ Galleria Rapida")
+            if 'Foto' in df_edit_wish.columns:
+                foto_validi = df_edit_wish[df_edit_wish['Foto'].astype(str).str.startswith('http', na=False)]
+                if not foto_validi.empty:
+                    cols = st.columns(4)
+                    for i, row in enumerate(foto_validi.itertuples()):
+                        with cols[i % 4]:
+                            st.image(row.Foto, caption=row.Oggetto, use_container_width=True)
 
     # --- 3. STANZE ---
     else:
