@@ -118,40 +118,62 @@ if check_password():
                                  color_discrete_sequence=["#2ecc71", "#ecf0f1"], hole=0.4)
                 st.plotly_chart(fig_pie, use_container_width=True)
 
-    # --- CASO B: STANZA SINGOLA CON RICALCOLO ---
-    else:
-        st.subheader(f"Dettaglio: {selezione.capitalize()}")
-        try:
-            df = conn.read(worksheet=selezione, ttl=0)
-            if df is not None:
-                df.columns = [str(c).strip() for c in df.columns]
-                col_prezzo = next((c for c in ['Costo', 'Prezzo', 'Prezzo Unitario'] if c in df.columns), None)
-                col_quantita = next((c for c in ['Acquistato', 'Quantità', 'Q.tà'] if c in df.columns), None)
-                col_totale = next((c for c in ['Importo Totale', 'Totale'] if c in df.columns), None)
-                col_scelta = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
+# --- CASO B: STANZA SINGOLA CON AGGIUNTA/RIMOZIONE RIGHE ---
+else:
+    st.subheader(f"Dettaglio: {selezione.capitalize()}")
+    try:
+        df = conn.read(worksheet=selezione, ttl=0)
+        if df is not None:
+            df.columns = [str(c).strip() for c in df.columns]
 
-                config_colonne = {
-                    col_prezzo: st.column_config.NumberColumn(format="%.2f €"),
-                    col_totale: st.column_config.NumberColumn(format="%.2f €", disabled=True)
-                }
-                if col_scelta:
-                    config_colonne[col_scelta] = st.column_config.SelectboxColumn("Acquista?", options=["S", "N"], required=True)
+            # Identificazione colonne
+            col_prezzo = next((c for c in ['Costo', 'Prezzo', 'Prezzo Unitario'] if c in df.columns), None)
+            col_quantita = next((c for c in ['Acquistato', 'Quantità', 'Q.tà'] if c in df.columns), None)
+            col_totale = next((c for c in ['Importo Totale', 'Totale'] if c in df.columns), None)
+            col_scelta = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
 
-                df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config_colonne, key=f"ed_{selezione}", num_rows="dynamic")
+            config_colonne = {
+                col_prezzo: st.column_config.NumberColumn(format="%.2f €"),
+                col_totale: st.column_config.NumberColumn(format="%.2f €", disabled=True)
+            }
+            if col_scelta:
+                config_colonne[col_scelta] = st.column_config.SelectboxColumn("Acquista?", options=["S", "N"], required=True)
 
-                if st.button(f"💾 SALVA E RICALCOLA {selezione.upper()}"):
-                    with st.spinner("Salvataggio..."):
-                        df_salvataggio = df_edit.copy()
-                        if col_prezzo and col_quantita and col_totale:
-                            if df_salvataggio[col_prezzo].dtype == object:
-                                df_salvataggio[col_prezzo] = df_salvataggio[col_prezzo].str.replace(',', '.')
-                            p = pd.to_numeric(df_salvataggio[col_prezzo], errors='coerce').fillna(0).astype(float)
-                            q = pd.to_numeric(df_salvataggio[col_quantita], errors='coerce').fillna(0).astype(float)
-                            df_salvataggio[col_totale] = (p * q).round(2)
+            # IL CUORE DELLA MODIFICA: num_rows="dynamic" permette di aggiungere/togliere
+            df_edit = st.data_editor(
+                df,
+                use_container_width=True,
+                hide_index=True,
+                column_config=config_colonne,
+                key=f"ed_{selezione}",
+                num_rows="dynamic"  # <-- QUESTA È LA MAGIA
+            )
 
-                        conn.update(worksheet=selezione, data=df_salvataggio)
-                        st.success(f"Dati aggiornati correttamente!")
-                        st.balloons()
-                        st.rerun()
-        except Exception as e:
-            st.error(f"Errore: {e}")
+            st.info("💡 Per eliminare una riga: selezionala a sinistra e premi 'Canc' sulla tastiera. Per aggiungere: usa il tasto '+' in fondo alla tabella.")
+
+            if st.button(f"💾 SALVA E RICALCOLA {selezione.upper()}"):
+                with st.spinner("Aggiornamento database in corso..."):
+                    # Creiamo una copia pulita rimuovendo eventuali righe completamente vuote
+                    df_salvataggio = df_edit.dropna(how='all').copy()
+
+                    if col_prezzo and col_quantita and col_totale:
+                        # Gestione conversione numerica
+                        if df_salvataggio[col_prezzo].dtype == object:
+                            df_salvataggio[col_prezzo] = df_salvataggio[col_prezzo].astype(str).str.replace(',', '.')
+
+                        p = pd.to_numeric(df_salvataggio[col_prezzo], errors='coerce').fillna(0).astype(float)
+                        q = pd.to_numeric(df_salvataggio[col_quantita], errors='coerce').fillna(0).astype(float)
+
+                        # Calcolo finale
+                        df_salvataggio[col_totale] = (p * q).round(2)
+
+                        # Riempie eventuali S/N mancanti con 'N' di default per le nuove righe
+                        if col_scelta:
+                            df_salvataggio[col_scelta] = df_salvataggio[col_scelta].fillna('N').str.upper()
+
+                    conn.update(worksheet=selezione, data=df_salvataggio)
+                    st.success(f"Database aggiornato! Righe ricalcolate correttamente.")
+                    st.balloons()
+                    st.rerun()
+    except Exception as e:
+        st.error(f"Errore durante l'operazione: {e}")
