@@ -24,18 +24,9 @@ def check_password():
         st.text_input("Password", type="password", key="password")
         if st.button("Accedi"):
             password_entered()
-            st.rerun()
+            st.rerun() # Forza il refresh immediato
         return False
-    elif not st.session_state["password_correct"]:
-        st.title("🔒 Accesso Riservato")
-        st.text_input("Utente", key="username")
-        st.text_input("Password", type="password", key="password")
-        if st.button("Accedi"):
-            password_entered()
-            st.rerun()
-        st.error("😕 Credenziali errate")
-        return False
-    return True
+    return st.session_state["password_correct"]
 
 # --- ESECUZIONE APP ---
 if check_password():
