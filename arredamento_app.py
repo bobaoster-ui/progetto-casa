@@ -2,12 +2,14 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import plotly.express as px
-from io import BytesIO
 from datetime import datetime
 from fpdf import FPDF
 
-# 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento v3.6", layout="wide", page_icon="🏠")
+# 1. CONFIGURAZIONE PAGINA (Release Candidate)
+st.set_page_config(page_title="Monitoraggio Arredamento RC1", layout="wide", page_icon="🏠")
+
+# Palette Colori coordinata al Logo (Blu Professionale e Oro)
+COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
 
 # --- CLASSE PER IL PDF ---
 class PDF(FPDF):
@@ -18,7 +20,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 20, 'REPORT SPESE ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 12)
-        # Proprietà con la à accentata correttamente
+        # Rispetto della Proprietà con accento (à)
         testo_header = f'Proprietà: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo_header.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -29,36 +31,25 @@ class PDF(FPDF):
         self.set_text_color(128, 128, 128)
         self.cell(0, 10, f'Pagina {self.page_no()}', align='C')
 
-# --- FUNZIONE DI LOGIN ---
-def check_password():
-    if "password_correct" not in st.session_state:
-        st.title("🔒 Accesso Riservato")
-        u = st.text_input("Utente")
-        p = st.text_input("Password", type="password")
-        if st.button("Accedi"):
-            if u == st.secrets["auth"]["username"] and p == st.secrets["auth"]["password"]:
-                st.session_state["password_correct"] = True
-                st.rerun()
-            else:
-                st.error("Credenziali errate")
-        return False
-    return True
-
-if check_password():
+if "password_correct" not in st.session_state:
+    st.title("🔒 Accesso Riservato")
+    u = st.text_input("Utente")
+    p = st.text_input("Password", type="password")
+    if st.button("Accedi"):
+        if u == st.secrets["auth"]["username"] and p == st.secrets["auth"]["password"]:
+            st.session_state["password_correct"] = True
+            st.rerun()
+        else: st.error("Credenziali errate")
+else:
     conn = st.connection("gsheets", type=GSheetsConnection)
 
-    # --- SIDEBAR CON IL TUO LOGO ---
     with st.sidebar:
         try:
-            # Qui usiamo il file che caricherai su GitHub
             st.image("logo.png", width=200)
         except:
-            # Se non trova il file, mette un'icona di riserva per non far crashare l'app
             st.image("https://cdn-icons-png.flaticon.com/512/619/619153.png", width=80)
-
         st.markdown("### Gestione Jacopo")
         st.divider()
-
         if st.button("Logout 🚪"):
             st.session_state.clear()
             st.rerun()
@@ -66,15 +57,13 @@ if check_password():
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
     selezione = st.sidebar.selectbox("Naviga tra le stanze:", ["Riepilogo Generale"] + stanze_reali)
 
-    st.title("🏠 Monitoraggio Arredamento Professionale")
-
     if selezione == "Riepilogo Generale":
+        st.title("🏠 Dashboard Riepilogo")
         lista_solo_confermati = []
-        tot_conf = 0
-        tot_potenziale = 0
-        dati_per_grafico_totale = []
+        tot_conf, tot_potenziale = 0, 0
+        dati_per_grafico = []
 
-        with st.spinner("Sincronizzazione dati..."):
+        with st.spinner("Analisi budget in corso..."):
             for s in stanze_reali:
                 try:
                     df_s = conn.read(worksheet=s, ttl=0)
@@ -86,39 +75,38 @@ if check_password():
 
                         if col_p:
                             df_s[col_p] = pd.to_numeric(df_s[col_p], errors='coerce').fillna(0)
-                            valore = df_s[col_p].sum()
-                            tot_potenziale += valore
-                            dati_per_grafico_totale.append({"Stanza": s.capitalize(), "Budget": valore})
+                            v = df_s[col_p].sum()
+                            tot_potenziale += v
+                            dati_per_grafico.append({"Stanza": s.capitalize(), "Budget": v})
 
                             if col_s:
                                 df_s[col_s] = df_s[col_s].astype(str).str.strip().str.upper()
-                                df_s_conf = df_s[df_s[col_s] == 'S'].copy()
-                                if not df_s_conf.empty:
-                                    tot_conf += df_s_conf[col_p].sum()
-                                    temp_df = pd.DataFrame({
-                                        'Ambiente': s.capitalize(),
-                                        'Oggetto': df_s_conf[col_o].astype(str),
-                                        'Importo': df_s_conf[col_p]
-                                    })
+                                df_s_c = df_s[df_s[col_s] == 'S'].copy()
+                                if not df_s_c.empty:
+                                    tot_conf += df_s_c[col_p].sum()
+                                    temp_df = pd.DataFrame({'Ambiente': s.capitalize(), 'Oggetto': df_s_c[col_o].astype(str), 'Importo': df_s_c[col_p]})
                                     lista_solo_confermati.append(temp_df)
                 except: continue
 
-        # Metriche
         m1, m2, m3 = st.columns(3)
+        # Stile migliorato per le metriche
         m1.metric("CONFERMATO (S)", f"{tot_conf:,.2f} EUR")
-        m2.metric("DA DECIDERE (N)", f"{(tot_potenziale - tot_conf):,.2f} EUR")
+        m2.metric("RESIDUO (N)", f"{(tot_potenziale - tot_conf):,.2f} EUR")
         m3.metric("BUDGET TOTALE", f"{tot_potenziale:,.2f} EUR")
 
-        if dati_per_grafico_totale:
-            df_plot = pd.DataFrame(dati_per_grafico_totale)
-            fig = px.bar(df_plot, x='Stanza', y='Budget', color='Stanza',
-                         title="Budget Totale per Ambiente")
+        if dati_per_grafico:
+            df_plot = pd.DataFrame(dati_per_grafico)
+            fig = px.pie(df_plot, values='Budget', names='Stanza',
+                         title="Ripartizione Budget tra gli Ambienti",
+                         color_discrete_sequence=COLOR_PALETTE)
+            fig.update_traces(textinfo='percent+label', hole=.3) # Grafico a ciambella più moderno
             st.plotly_chart(fig, use_container_width=True)
 
         if lista_solo_confermati:
-            st.write("### 📋 Dettaglio Acquisti Confermati (S)")
+            st.markdown("---")
+            st.write("### 📋 Dettaglio Acquisti Confermati")
             df_final = pd.concat(lista_solo_confermati)
-            st.dataframe(df_final, use_container_width=True, hide_index=True)
+            st.dataframe(df_final.style.format(subset=['Importo'], formatter="{:.2f} EUR"), use_container_width=True, hide_index=True)
 
             pdf = PDF()
             pdf.add_page()
@@ -136,12 +124,10 @@ if check_password():
                 pdf.cell(100, 8, ogg_clean[:50], 1)
                 pdf.cell(50, 8, f"{row['Importo']:,.2f} EUR", 1, 1, 'R')
 
-            pdf_output = pdf.output()
-            st.download_button("📄 Report PDF", data=bytes(pdf_output), file_name="Report_Jacopo.pdf")
+            st.download_button("📄 Esporta Report PDF", data=bytes(pdf.output()), file_name="Report_Jacopo_Finale.pdf")
 
     else:
-        # STANZA SINGOLA
-        st.subheader(f"Ambiente: {selezione.capitalize()}")
+        st.title(f"🏠 Gestione {selezione.capitalize()}")
         try:
             df = conn.read(worksheet=selezione, ttl=0)
             if df is not None:
@@ -150,13 +136,10 @@ if check_password():
                 config = {col_s: st.column_config.SelectboxColumn("Acquista?", options=["S", "N"])} if col_s else {}
                 df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic", key=f"ed_{selezione}")
 
-                col_btn1, col_btn2 = st.columns([1, 4])
-                if col_btn1.button(f"💾 SALVA {selezione.upper()}"):
-                    with st.spinner("Salvataggio..."):
-                        conn.update(worksheet=selezione, data=df_edit)
-                    st.success(f"✅ Salvato!")
+                c1, c2 = st.columns([1, 4])
+                if c1.button("💾 SALVA"):
+                    with st.spinner("Invio..."): conn.update(worksheet=selezione, data=df_edit)
+                    st.success("Dati aggiornati!")
                     st.balloons()
-                if col_btn2.button("Aggiorna Vista 🔄"):
-                    st.rerun()
-        except Exception as e:
-            st.error(f"Errore: {e}")
+                if c2.button("Aggiorna 🔄"): st.rerun()
+        except Exception as e: st.error(f"Errore: {e}")
