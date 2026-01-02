@@ -7,12 +7,12 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V5.2", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V5.3", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
 
-# --- CLASSE PER IL PDF (Corretta per gestire righe multiple) ---
+# --- CLASSE PER IL PDF ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(46, 117, 182)
@@ -69,7 +69,7 @@ else:
             budget_max = float(df_imp[df_imp['Parametro'] == 'Budget Totale']['Valore'].values[0])
         except:
             budget_max = 10000.0
-            st.warning("Usando budget predefinito 10k")
+            st.warning("Uso budget predefinito 10.000€")
 
         lista_solo_confermati = []
         tot_conf, tot_potenziale = 0, 0
@@ -86,8 +86,11 @@ else:
 
                     if col_p:
                         df_s[col_p] = pd.to_numeric(df_s[col_p], errors='coerce').fillna(0)
-                        tot_potenziale += df_s[col_p].sum()
-                        dati_per_grafico.append({"Stanza": s.capitalize(), "Budget": df_s[col_p].sum()})
+                        valore_stanza = df_s[col_p].sum()
+                        tot_potenziale += valore_stanza
+                        # Riempiamo la lista per il grafico
+                        if valore_stanza > 0:
+                            dati_per_grafico.append({"Stanza": s.capitalize(), "Budget": valore_stanza})
 
                         if col_s:
                             df_s[col_s] = df_s[col_s].astype(str).str.strip().str.upper()
@@ -102,25 +105,36 @@ else:
                                 lista_solo_confermati.append(temp_df)
             except: continue
 
-        # Budget Alert
+        # Budget Alert Barra
         percentuale = min(tot_conf / budget_max, 1.2)
         st.subheader(f"📊 Stato del Budget (Target: {budget_max:,.2f} €)")
         st.progress(percentuale)
 
-        # Dashboard Cards
         m1, m2, m3 = st.columns(3)
         m1.metric("CONFERMATO (S)", f"{tot_conf:,.2f} €")
         m2.metric("RESIDUO BUDGET", f"{(budget_max - tot_conf):,.2f} €")
         m3.metric("% UTILIZZATA", f"{percentuale:.1%}")
 
+        st.divider()
+
+        # --- RIPRISTINO GRAFICO ---
+        if dati_per_grafico:
+            col_graf, col_vuota = st.columns([2, 1])
+            with col_graf:
+                df_plot = pd.DataFrame(dati_per_grafico)
+                fig = px.pie(df_plot, values='Budget', names='Stanza',
+                            title="Ripartizione Spesa Potenziale per Stanza",
+                            color_discrete_sequence=COLOR_PALETTE,
+                            hole=0.4)
+                st.plotly_chart(fig, use_container_width=True)
+
         # Sezione Tabella e PDF
         if lista_solo_confermati:
-            st.divider()
             st.subheader("📝 Dettaglio Acquisti Confermati")
             df_final = pd.concat(lista_solo_confermati)
             st.dataframe(df_final, use_container_width=True, hide_index=True)
 
-            # --- GENERAZIONE PDF FIXATA ---
+            # Generazione PDF
             pdf = PDF()
             pdf.add_page()
             pdf.set_font("Arial", 'B', 10)
@@ -128,13 +142,10 @@ else:
             pdf.cell(40, 10, 'Ambiente', 1, 0, 'C', True)
             pdf.cell(100, 10, 'Oggetto', 1, 0, 'C', True)
             pdf.cell(50, 10, 'Importo (EUR)', 1, 1, 'C', True)
-
             pdf.set_font("Arial", '', 9)
             for _, row in df_final.iterrows():
-                # Pulizia testi per evitare errori caratteri
                 ambiente = str(row['Ambiente']).encode('latin-1', 'replace').decode('latin-1')
                 oggetto = str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1')
-
                 pdf.cell(40, 8, ambiente, 1)
                 pdf.cell(100, 8, oggetto[:55], 1)
                 pdf.cell(50, 8, f"{row['Importo']:,.2f}", 1, 1, 'R')
@@ -142,7 +153,6 @@ else:
             pdf.set_font("Arial", 'B', 10)
             pdf.cell(140, 10, 'TOTALE CONFERMATO', 1, 0, 'R')
             pdf.cell(50, 10, f"{tot_conf:,.2f}", 1, 1, 'R')
-
             st.download_button("📄 Scarica Report PDF", data=bytes(pdf.output()), file_name="Report_Arredamento_Jacopo.pdf")
 
     # --- 2. WISHLIST ---
@@ -159,7 +169,7 @@ else:
                 "Foto": st.column_config.TextColumn("🔗 Link Foto"),
                 "Prezzo Stimato": st.column_config.NumberColumn("Prezzo (EUR)", format="%.2f"),
             }
-            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v5_2")
+            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v5_3")
             if st.button("💾 SALVA MODIFICHE"):
                 with st.spinner("Salvataggio..."):
                     df_to_save = df_edit_wish.drop(columns=['Anteprima'])
