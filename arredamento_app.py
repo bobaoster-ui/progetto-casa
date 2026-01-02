@@ -7,7 +7,7 @@ from datetime import datetime
 from fpdf import FPDF
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento v3.4", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento v3.5", layout="wide", page_icon="🏠")
 
 # --- CLASSE PER IL PDF ---
 class PDF(FPDF):
@@ -18,7 +18,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 20, 'REPORT SPESE ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 12)
-        # Parola "Proprietà" con accento gestita per FPDF
+        # Utilizzo della Proprietà con accento corretta
         testo_header = f'Proprietà: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo_header.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -47,14 +47,21 @@ def check_password():
 if check_password():
     conn = st.connection("gsheets", type=GSheetsConnection)
 
-    if st.sidebar.button("Logout 🚪"):
-        st.session_state.clear()
-        st.rerun()
+    # --- SIDEBAR CON LOGO ---
+    with st.sidebar:
+        # Inseriamo un'immagine elegante che richiama il design dell'arredamento
+        st.image("https://cdn-icons-png.flaticon.com/512/619/619153.png", width=100)
+        st.markdown("### Gestione Jacopo")
+        st.divider()
+
+        if st.button("Logout 🚪"):
+            st.session_state.clear()
+            st.rerun()
 
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
-    selezione = st.sidebar.selectbox("Menu:", ["Riepilogo Generale"] + stanze_reali)
+    selezione = st.sidebar.selectbox("Naviga tra le stanze:", ["Riepilogo Generale"] + stanze_reali)
 
-    st.title("🏠 Gestione Arredamento Professionale")
+    st.title("🏠 Monitoraggio Arredamento Professionale")
 
     if selezione == "Riepilogo Generale":
         lista_solo_confermati = []
@@ -62,7 +69,7 @@ if check_password():
         tot_potenziale = 0
         dati_per_grafico_totale = []
 
-        with st.spinner("Aggiornamento dati in tempo reale..."):
+        with st.spinner("Sincronizzazione con il database..."):
             for s in stanze_reali:
                 try:
                     df_s = conn.read(worksheet=s, ttl=0)
@@ -74,9 +81,9 @@ if check_password():
 
                         if col_p:
                             df_s[col_p] = pd.to_numeric(df_s[col_p], errors='coerce').fillna(0)
-                            spesa_stanza_totale = df_s[col_p].sum()
-                            tot_potenziale += spesa_stanza_totale
-                            dati_per_grafico_totale.append({"Stanza": s.capitalize(), "Budget": spesa_stanza_totale})
+                            valore = df_s[col_p].sum()
+                            tot_potenziale += valore
+                            dati_per_grafico_totale.append({"Stanza": s.capitalize(), "Budget": valore})
 
                             if col_s:
                                 df_s[col_s] = df_s[col_s].astype(str).str.strip().str.upper()
@@ -91,14 +98,17 @@ if check_password():
                                     lista_solo_confermati.append(temp_df)
                 except: continue
 
+        # Metriche
         m1, m2, m3 = st.columns(3)
         m1.metric("CONFERMATO (S)", f"{tot_conf:,.2f} EUR")
         m2.metric("DA DECIDERE (N)", f"{(tot_potenziale - tot_conf):,.2f} EUR")
-        m3.metric("BUDGET TOTALE (S+N)", f"{tot_potenziale:,.2f} EUR")
+        m3.metric("BUDGET TOTALE", f"{tot_potenziale:,.2f} EUR")
 
         if dati_per_grafico_totale:
             df_plot = pd.DataFrame(dati_per_grafico_totale)
-            fig = px.bar(df_plot, x='Stanza', y='Budget', color='Stanza', title="Potenziale di spesa totale")
+            fig = px.bar(df_plot, x='Stanza', y='Budget', color='Stanza',
+                         title="Ripartizione Budget Totale per Ambiente",
+                         color_discrete_sequence=px.colors.qualitative.Safe)
             st.plotly_chart(fig, use_container_width=True)
 
         if lista_solo_confermati:
@@ -123,11 +133,11 @@ if check_password():
                 pdf.cell(50, 8, f"{row['Importo']:,.2f} EUR", 1, 1, 'R')
 
             pdf_output = pdf.output()
-            st.download_button("📄 Scarica Report PDF (Solo S)", data=bytes(pdf_output), file_name="Report_Jacopo.pdf")
+            st.download_button("📄 Scarica Report PDF", data=bytes(pdf_output), file_name="Report_Jacopo.pdf")
 
     else:
         # STANZA SINGOLA
-        st.subheader(f"Ambiente: {selezione.capitalize()}")
+        st.subheader(f"Modifica Ambiente: {selezione.capitalize()}")
         try:
             df = conn.read(worksheet=selezione, ttl=0)
             if df is not None:
@@ -135,25 +145,15 @@ if check_password():
                 col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), None)
                 config = {col_s: st.column_config.SelectboxColumn("Acquista?", options=["S", "N"])} if col_s else {}
 
-                df_edit = st.data_editor(
-                    df,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config=config,
-                    num_rows="dynamic",
-                    key=f"ed_{selezione}"
-                )
+                df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic", key=f"ed_{selezione}")
 
-                # Layout pulsanti
                 col_btn1, col_btn2 = st.columns([1, 4])
-
                 if col_btn1.button(f"💾 SALVA {selezione.upper()}"):
-                    with st.spinner("Salvataggio in corso..."):
+                    with st.spinner("Salvataggio..."):
                         conn.update(worksheet=selezione, data=df_edit)
-                    st.success(f"✅ Modifiche salvate con successo per {selezione.capitalize()}!")
-                    st.balloons() # Un piccolo tocco festoso per il successo!
+                    st.success(f"✅ Dati di {selezione.capitalize()} salvati!")
+                    st.balloons()
 
-                # Il pulsante aggiorna vista è sempre utile per "pulire" la cache manuale
                 if col_btn2.button("Aggiorna Vista 🔄"):
                     st.rerun()
 
