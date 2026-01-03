@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V8.3", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V8.4", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_AZZURRO = (46, 117, 182)
@@ -26,7 +26,7 @@ class PDF(FPDF):
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
 
-# --- FUNZIONE PULIZIA DATI AVANZATA ---
+# --- FUNZIONE PULIZIA DATI ---
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame(), 'Acquista S/N', 'Stato Pagamento'
     df.columns = [str(c).strip() for c in df.columns]
@@ -40,17 +40,14 @@ def safe_clean_df(df):
     if col_sn not in df.columns: df[col_sn] = 'N'
     if col_stato not in df.columns: df[col_stato] = ''
 
-    target_cols = {'Oggetto': 'Descrizione mancante', 'Importo Totale': 0.0, 'Versato': 0.0}
-    for col, val in target_cols.items():
-        if col not in df.columns: df[col] = val
-
-    for col in ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+    # Assicuriamoci che le colonne numeriche esistano
+    for c in ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']:
+        if c not in df.columns: df[c] = 0.0
+        df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
 
     return df, col_sn, col_stato
 
-# --- LOGIN E SIDEBAR ---
+# --- LOGIN ---
 if "password_correct" not in st.session_state:
     st.title("🔒 Accesso Riservato")
     u = st.text_input("Utente")
@@ -65,12 +62,9 @@ else:
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
     with st.sidebar:
-        # --- LOGO IN ALTO A SINISTRA ---
-        # Sostituisci 'logo.png' con il nome del file che hai caricato sul server
-        try:
-            st.image("logo.png", use_container_width=True)
-        except:
-            st.info("Carica il file 'logo.png' nella cartella dell'app per visualizzarlo qui.")
+        # LOGO
+        try: st.image("logo.png", use_container_width=True)
+        except: st.info("Carica 'logo.png' per vederlo qui.")
 
         st.markdown("---")
         can_edit_structure = st.toggle("Modifica Struttura", value=False)
@@ -134,22 +128,32 @@ else:
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
 
             if st.form_submit_button("💾 SALVA"):
+                # Applichiamo i calcoli riga per riga sul dataframe modificato
                 for i in range(len(df_edit)):
                     try:
-                        p, s, q = float(df_edit.at[i, 'Prezzo Pieno']), float(df_edit.at[i, 'Sconto %']), float(df_edit.at[i, 'Acquistato'])
-                        costo = p * (1 - (s/100)) if p > 0 else float(df_edit.at[i, 'Costo'])
-                        df_edit.at[i, 'Costo'] = costo
-                        totale_riga = costo * q
-                        df_edit.at[i, 'Importo Totale'] = totale_riga
+                        p = float(df_edit.iloc[i]['Prezzo Pieno'])
+                        s = float(df_edit.iloc[i]['Sconto %'])
+                        q = float(df_edit.iloc[i]['Acquistato'])
 
-                        if str(df_edit.at[i, col_stato]) == "Saldato":
-                            df_edit.at[i, 'Versato'] = totale_riga
-                    except: continue
+                        # Calcolo Costo Unitario
+                        costo = p * (1 - (s/100)) if p > 0 else float(df_edit.iloc[i]['Costo'])
+                        df_edit.at[df_edit.index[i], 'Costo'] = costo
+
+                        # Calcolo Importo Totale
+                        totale_riga = costo * q
+                        df_edit.at[df_edit.index[i], 'Importo Totale'] = totale_riga
+
+                        # LOGICA SALDATO (Controllo stringa pulita)
+                        stato_val = str(df_edit.iloc[i][col_stato]).strip()
+                        if stato_val == "Saldato":
+                            df_edit.at[df_edit.index[i], 'Versato'] = totale_riga
+                    except:
+                        continue
 
                 conn.update(worksheet=selezione, data=df_edit)
                 st.balloons()
-                st.success("Dati salvati e saldo calcolato!")
-                time.sleep(2)
+                st.success("Dati aggiornati correttamente!")
+                time.sleep(1.5)
                 st.rerun()
 
     # --- 3. WISHLIST ---
