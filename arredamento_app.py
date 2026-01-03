@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V10.3", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V10.4", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -58,19 +58,20 @@ else:
             st.session_state.clear()
             st.rerun()
 
-    # --- 1. RIEPILOGO GENERALE (Mappatura esatta Parametro/Valore) ---
+    # --- 1. RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
 
         try:
+            # Lettura precisa foglio Impostazioni
             df_imp = conn.read(worksheet="Impostazioni", ttl=0)
             df_imp.columns = [str(c).strip() for c in df_imp.columns]
-            # CERCA: Colonna 'Valore' dove 'Parametro' == 'Budget Totale'
-            budget_row = df_imp[df_imp['Parametro'] == 'Budget Totale']
-            budget_iniziale = pd.to_numeric(budget_row['Valore'].values[0], errors='coerce')
-        except:
+            # Cerchiamo il valore 15000 associato a Budget Totale
+            budget_val = df_imp.loc[df_imp['Parametro'].str.contains('Budget Totale', na=False), 'Valore'].values[0]
+            budget_iniziale = float(budget_val)
+        except Exception as e:
             budget_iniziale = 0.0
-            st.warning("Errore lettura Budget. Verifica che nel foglio 'Impostazioni' ci sia 'Budget Totale' sotto 'Parametro' e il numero sotto 'Valore'.")
+            st.warning(f"Budget non trovato nel foglio Impostazioni. (Errore: {e})")
 
         all_rows = []
         for s in stanze_reali:
@@ -115,7 +116,10 @@ else:
                     pdf.multi_cell(90, 5, str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1'), 1)
                     y_e = pdf.get_y(); pdf.set_xy(x_s + 120, y_s); h = max(10, y_e - y_s)
                     pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R'); pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
-                st.download_button("📥 Scarica Report PDF", data=bytes(pdf.output(dest='S')), file_name="Report_Jacopo.pdf", mime="application/pdf")
+
+                # FIX ERRORE PDF (punto 1)
+                pdf_output = pdf.output(dest='S').encode('latin-1')
+                st.download_button("📥 Scarica Report PDF", data=pdf_output, file_name="Report_Jacopo.pdf", mime="application/pdf")
         else: st.warning("Nessun dato confermato.")
 
     # --- 2. STANZE ---
@@ -145,20 +149,22 @@ else:
                         if stato_val == "Saldato": df_edit.at[df_edit.index[i], 'Versato'] = totale
                         elif stato_val in ["", "None", "nan", "Preventivo"]: df_edit.at[df_edit.index[i], 'Versato'] = 0.0
 
-                        # ULTIMO TENTATIVO LINK: Pulizia totale
+                        # Fix Link Fattura (punto 4)
                         if "Link" in df_edit.columns:
                             l = str(df_edit.iloc[i]["Link"]).strip()
                             df_edit.at[df_edit.index[i], "Link"] = l if l.lower() not in ["nan", "none", ""] else ""
                     except: continue
 
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Sincronizzazione completata!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Dati salvati!"); st.balloons(); time.sleep(1); st.rerun()
 
     # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
+        # Ripristino Foto e Link (punto 2)
         w_config = {"Foto": st.column_config.ImageColumn("Anteprima"), "Link": st.column_config.LinkColumn("Link Prodotto")}
+        # Modifica struttura dinamica (punto 3)
         df_ed_w = st.data_editor(df_w, use_container_width=True, hide_index=True, column_config=w_config, num_rows="dynamic" if can_edit_structure else "fixed")
         if st.button("Salva Wishlist"):
             conn.update(worksheet="desideri", data=df_ed_w); st.balloons(); st.rerun()
