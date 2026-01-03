@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V12.5", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V13.0", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -19,7 +19,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola: Proprietà con à accentata
+        # Nota: Proprietà con à accentata
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -27,12 +27,12 @@ class PDF(FPDF):
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
-    # Forziamo le colonne a testo per evitare il blocco numerico
-    text_cols = ['Oggetto', 'Articolo', 'Link', 'Note', 'Link Fattura', 'Acquista S/N', 'S/N']
-    for col in text_cols:
+    # Pulizia testi per evitare errori di formato
+    for col in ['Oggetto', 'Articolo', 'Link', 'Note', 'Link Fattura', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato']:
         if col in df.columns:
             df[col] = df[col].astype(str).replace(['None', 'nan', '104807'], '')
 
+    # Conversione numeri
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
         if c in df.columns:
@@ -66,21 +66,19 @@ else:
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
 
+        # Lettura Budget (Cella B2)
         try:
-            # Lettura Budget: proviamo a leggere la colonna 'Valore' direttamente
-            df_imp = conn.read(worksheet="Impostazioni", ttl=0)
-            budget_iniziale = float(df_imp['Valore'].iloc[0])
+            df_imp = conn.read(worksheet="Impostazioni", ttl=0, header=None)
+            budget_iniziale = float(df_imp.iloc[1, 1])
         except:
-            budget_iniziale = 15000.0 # Valore di emergenza se Sheets fallisce
+            budget_iniziale = 15000.0
 
         all_rows = []
         for s in stanze_reali:
             try:
                 df_s = safe_clean_df(conn.read(worksheet=s, ttl=0))
                 if not df_s.empty:
-                    # Tenta di trovare la colonna S/N corretta
                     c_sn = 'Acquista S/N' if 'Acquista S/N' in df_s.columns else 'S/N'
-                    # Filtra solo quelli con "S"
                     df_c = df_s[df_s[c_sn].str.upper().str.strip() == 'S'].copy()
                     if not df_c.empty:
                         df_c['Ambiente'] = s.capitalize()
@@ -92,12 +90,23 @@ else:
             tot_conf = df_final['Importo Totale'].sum()
             tot_versato = df_final['Versato'].sum()
 
+            # Metriche
             c1, c2, c3 = st.columns(3)
             c1.metric("BUDGET", f"{budget_iniziale:,.2f} €")
             c2.metric("CONFERMATO", f"{tot_conf:,.2f} €", delta=f"{budget_iniziale-tot_conf:,.2f} residuo")
             c3.metric("PAGATO", f"{tot_versato:,.2f} €")
 
             st.divider()
+
+            # GRAFICI - Reinseriti con logica protetta
+            g1, g2 = st.columns(2)
+            with g1:
+                df_pie = df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index()
+                st.plotly_chart(px.pie(df_pie, values='Importo Totale', names='Ambiente', title="Spesa per Stanza", hole=0.4), use_container_width=True)
+            with g2:
+                df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato", "Pagato"], "Euro": [budget_iniziale, tot_conf, tot_versato]})
+                st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce", title="Stato Finanziario"), use_container_width=True)
+
             st.subheader("Dettaglio Oggetti Acquistati")
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
@@ -111,9 +120,9 @@ else:
                     pdf.multi_cell(90, 5, str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1'), 1)
                     y_e = pdf.get_y(); pdf.set_xy(x_s + 120, y_s); h = max(10, y_e - y_s)
                     pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R'); pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
-
                 st.download_button("📥 Scarica Report PDF", data=pdf.output(dest='S').encode('latin-1'), file_name="Report_Jacopo.pdf", mime="application/pdf")
-        else: st.warning("Nessun oggetto risulta acquistato (metti 'S' nella colonna Acquista S/N).")
+        else:
+            st.warning("Nessun oggetto confermato (metti 'S' nella colonna S/N delle stanze).")
 
     # --- 2. STANZE ---
     elif selezione in stanze_reali:
@@ -122,18 +131,35 @@ else:
         c_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
         c_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
 
+        st.info("💡 Per aprire i Link: passa il mouse sulla cella e clicca l'icona che appare a destra.")
+
         with st.form(f"form_{selezione}"):
             config = {
                 c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]),
                 c_stato: st.column_config.SelectboxColumn(c_stato, options=["", "Acconto", "Saldato", "Ordinato", "Preventivo"]),
-                "Link": st.column_config.LinkColumn("Link Fattura", help="Clicca per aprire, scrivi per modificare"),
+                "Link": st.column_config.LinkColumn("Link Fattura"),
                 "Note": st.column_config.TextColumn("Note")
             }
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
 
-            if st.form_submit_button("💾 SALVA"):
+            if st.form_submit_button("💾 SALVA E AGGIORNA"):
+                # LOGICA AUTOMATICA SALDATO -> VERSATO
+                for i in range(len(df_edit)):
+                    try:
+                        # Ricalcolo costi
+                        p, s, q = float(df_edit.iloc[i]['Prezzo Pieno']), float(df_edit.iloc[i]['Sconto %']), float(df_edit.iloc[i]['Acquistato'])
+                        costo = p * (1 - (s/100)) if p > 0 else float(df_edit.iloc[i]['Costo'])
+                        totale = costo * q
+                        df_edit.at[df_edit.index[i], 'Costo'] = costo
+                        df_edit.at[df_edit.index[i], 'Importo Totale'] = totale
+
+                        # Se è saldato, Versato = Totale
+                        if str(df_edit.iloc[i][c_stato]).strip() == "Saldato":
+                            df_edit.at[df_edit.index[i], 'Versato'] = totale
+                    except: continue
+
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Sincronizzazione completata!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Dati sincronizzati!"); st.balloons(); time.sleep(1); st.rerun()
 
     # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
