@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V15.2", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V15.3", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -19,7 +19,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Nota: Proprietà con à accentata
+        # Regola: Proprietà con à accentata
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -30,7 +30,7 @@ def safe_clean_df(df):
     text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link']
     for col in text_cols:
         if col in df.columns:
-            df[col] = df[col].astype(str).replace(['None', 'nan', '104807', '<NA>', 'undefined'], '')
+            df[col] = df[col].astype(str).replace(['None', 'nan', '104807', '<NA>', 'undefined', 'nan'], '')
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
         if c in df.columns:
@@ -60,16 +60,18 @@ else:
             st.session_state.clear()
             st.rerun()
 
+    # --- RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
 
-        # FIX BUDGET: Lettura ultra-sicura
+        # Lettura Budget potenziata
         try:
-            df_imp = conn.read(worksheet="Impostazioni", ttl=0, header=None)
-            budget_iniziale = float(df_imp.iloc[1, 1]) # Prende cella B2 (riga 1, col 1)
+            df_imp = conn.read(worksheet="Impostazioni", ttl=0)
+            # Cerchiamo il valore numerico nella prima colonna o nella seconda
+            budget_iniziale = pd.to_numeric(df_imp.iloc[0, 1], errors='coerce')
+            if pd.isna(budget_iniziale): budget_iniziale = 15000.0
         except:
             budget_iniziale = 15000.0
-            st.warning("⚠️ Usando budget predefinito (15.000€). Controlla il foglio 'Impostazioni'.")
 
         all_rows = []
         for s in stanze_reali:
@@ -94,6 +96,70 @@ else:
             c3.metric("PAGATO", f"{tot_versato:,.2f} €")
 
             st.divider()
+
+            if st.button("📄 Genera Report PDF Senza Scalini"):
+                try:
+                    pdf = PDF()
+                    pdf.add_page()
+                    pdf.set_font('Arial', 'B', 10)
+                    pdf.set_fill_color(*COLOR_AZZURRO)
+                    pdf.set_text_color(255, 255, 255)
+
+                    # Intestazioni
+                    pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True)
+                    pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True)
+                    pdf.cell(35, 10, 'Totale', 1, 0, 'C', True)
+                    pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
+
+                    pdf.set_font('Arial', '', 9)
+                    pdf.set_text_color(0, 0, 0)
+
+                    for _, row in df_final.iterrows():
+                        # Pulizia Nan
+                        art_val = str(row['Oggetto']).replace('nan', '').strip()
+                        txt = art_val.encode('latin-1', 'replace').decode('latin-1')
+                        stanza = str(row['Ambiente'])
+                        v_tot = f"{row['Importo Totale']:,.2f}"
+                        v_ver = f"{row['Versato']:,.2f}"
+
+                        # Calcolo altezza riga
+                        linee = pdf.multi_cell(90, 5, txt, split_only=True)
+                        h_riga = max(10, len(linee) * 5)
+
+                        # Controllo fine pagina
+                        if pdf.get_y() + h_riga > 270:
+                            pdf.add_page()
+
+                        x, y = pdf.get_x(), pdf.get_y()
+
+                        # Disegno delle celle con altezza fissa h_riga
+                        pdf.rect(x, y, 30, h_riga)
+                        pdf.set_xy(x, y)
+                        pdf.cell(30, h_riga, stanza, 0, 0, 'L')
+
+                        pdf.rect(x + 30, y, 90, h_riga)
+                        pdf.set_xy(x + 30, y)
+                        pdf.multi_cell(90, 5, txt, 0, 'L')
+
+                        pdf.rect(x + 120, y, 35, h_riga)
+                        pdf.set_xy(x + 120, y)
+                        pdf.cell(35, h_riga, v_tot, 0, 0, 'R')
+
+                        pdf.rect(x + 155, y, 35, h_riga)
+                        pdf.set_xy(x + 155, y)
+                        pdf.cell(35, h_riga, v_ver, 0, 1, 'R')
+
+                        pdf.set_y(y + h_riga)
+
+                    data_pdf = pdf.output(dest='S')
+                    st.download_button("📥 Scarica Report PDF", data=bytes(data_pdf), file_name="Report_Arredi.pdf", mime="application/pdf")
+                except Exception as e:
+                    st.error(f"Errore: {e}")
+
+            st.subheader("Dettaglio Articoli")
+            st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
+
+            st.divider()
             g1, g2 = st.columns(2)
             with g1:
                 df_pie = df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index()
@@ -102,42 +168,7 @@ else:
                 df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato", "Pagato"], "Euro": [budget_iniziale, tot_conf, tot_versato]})
                 st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce"), use_container_width=True)
 
-            if st.button("📄 Genera Report PDF"):
-                try:
-                    pdf = PDF()
-                    pdf.add_page()
-                    pdf.set_font('Arial', 'B', 10)
-                    pdf.set_fill_color(*COLOR_AZZURRO)
-                    pdf.set_text_color(255, 255, 255)
-                    pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True)
-                    pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True)
-                    pdf.cell(35, 10, 'Totale', 1, 0, 'C', True)
-                    pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
-
-                    pdf.set_font('Arial', '', 9); pdf.set_text_color(0, 0, 0)
-                    for _, row in df_final.iterrows():
-                        # Pulizia del nan nel PDF
-                        art = str(row['Oggetto']).replace('nan', '').strip()
-                        txt = art.encode('latin-1', 'replace').decode('latin-1')
-
-                        linee = pdf.multi_cell(90, 5, txt, split_only=True)
-                        h = max(10, len(linee) * 5)
-
-                        x, y = pdf.get_x(), pdf.get_y()
-                        pdf.cell(30, h, str(row['Ambiente']), 1)
-                        pdf.multi_cell(90, 5, txt, 1)
-                        pdf.set_xy(x + 120, y)
-                        pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
-                        pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
-
-                    # FIX PDF ERROR: Non aggiungere .encode() qui
-                    pdf_out = pdf.output(dest='S')
-                    st.download_button("📥 Scarica Report PDF", data=bytes(pdf_out), file_name="Report_Arredi.pdf", mime="application/pdf")
-                except Exception as e:
-                    st.error(f"Errore generazione PDF: {e}")
-
-            st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
-
+    # --- STANZE ---
     elif selezione in stanze_reali:
         st.title(f"🏠 {selezione.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=selezione, ttl=0))
@@ -162,15 +193,13 @@ else:
                         df_edit.at[df_edit.index[i], 'Importo Totale'] = totale
 
                         stato_val = str(df_edit.iloc[i][col_stato]).strip()
-                        # LOGICA RICHIESTA: Se stato è vuoto, azzera il versato
                         if stato_val == "" or stato_val.lower() == "none":
                             df_edit.at[df_edit.index[i], 'Versato'] = 0.0
                         elif stato_val == "Saldato":
                             df_edit.at[df_edit.index[i], 'Versato'] = totale
-                        # Se è Acconto, non tocca il valore che hai inserito!
                     except: continue
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Dati aggiornati correttamente su Google Sheets!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Salvataggio riuscito!"); st.balloons(); time.sleep(1); st.rerun()
 
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
