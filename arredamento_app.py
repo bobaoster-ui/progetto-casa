@@ -7,12 +7,12 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V7.7", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V7.8", layout="wide", page_icon="🏠")
 
 # Colori
 COLOR_AZZURRO = (46, 117, 182)
 
-# --- CLASSE PDF OTTIMIZZATA ---
+# --- CLASSE PDF ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(*COLOR_AZZURRO)
@@ -21,19 +21,23 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola fissa: Proprietà con à
+        # Regola fissa: Proprietà con à accentata
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
 
-# --- FUNZIONE PULIZIA DATI ESTREMA ---
+# --- FUNZIONE PULIZIA DATI CON AGGANCIO COLONNE DINAMICO ---
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Se mancano colonne fondamentali, le creiamo noi per non far crashare l'app
+    # MAPPATURA INTELLIGENTE: Se non trova "Oggetto", cerca "Articolo"
+    if 'Oggetto' not in df.columns and 'Articolo' in df.columns:
+        df['Oggetto'] = df['Articolo']
+
+    # Colonne obbligatorie per evitare crash
     target_cols = {
-        'Oggetto': 'Oggetto non definito',
+        'Oggetto': 'Descrizione mancante',
         'Importo Totale': 0.0,
         'Versato': 0.0,
         'Stato Pagamento': 'Da definire',
@@ -43,7 +47,6 @@ def safe_clean_df(df):
         if col not in df.columns:
             df[col] = val
 
-    # Conversione numeri
     for col in ['Importo Totale', 'Versato']:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
     return df
@@ -79,7 +82,6 @@ else:
             try:
                 df_s = safe_clean_df(conn.read(worksheet=s, ttl=0))
                 if not df_s.empty:
-                    # Troviamo la colonna di scelta (S/N)
                     col_scelta = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df_s.columns), 'Acquista S/N')
                     df_c = df_s[df_s[col_scelta].astype(str).str.upper() == 'S'].copy()
                     if not df_c.empty:
@@ -97,9 +99,18 @@ else:
             m2.metric("PAGATO", f"{tot_versato:,.2f} €")
             m3.metric("DA SALDARE", f"{(tot_conf - tot_versato):,.2f} €")
 
+            # REINSERIMENTO GRAFICI
+            st.divider()
+            g1, g2 = st.columns(2)
+            with g1:
+                df_pie = df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index()
+                st.plotly_chart(px.pie(df_pie, values='Importo Totale', names='Ambiente', title="Budget per Stanza", hole=0.4), use_container_width=True)
+            with g2:
+                df_bar = pd.DataFrame({"Stato": ["Pagato", "Residuo"], "Euro": [tot_versato, max(0, tot_conf - tot_versato)]})
+                st.plotly_chart(px.bar(df_bar, x="Stato", y="Euro", color="Stato", color_discrete_map={"Pagato":"#2ECC71","Residuo":"#E74C3C"}), use_container_width=True)
+
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato', 'Stato Pagamento']], use_container_width=True, hide_index=True)
 
-            # --- PDF FIX DEFINITIVO ---
             if st.button("📄 Genera Report PDF"):
                 try:
                     pdf = PDF()
@@ -107,7 +118,7 @@ else:
                     pdf.set_font('Arial', 'B', 10)
                     pdf.set_fill_color(*COLOR_AZZURRO); pdf.set_text_color(255,255,255)
                     pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True)
-                    pdf.cell(90, 10, 'Oggetto', 1, 0, 'C', True)
+                    pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True)
                     pdf.cell(35, 10, 'Totale', 1, 0, 'C', True)
                     pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
 
@@ -119,16 +130,15 @@ else:
                         pdf.cell(35, 8, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
                         pdf.cell(35, 8, f"{row['Versato']:,.2f}", 1, 1, 'R')
 
-                    # Trucco: convertiamo esplicitamente in stringa di byte standard
                     pdf_output = pdf.output(dest='S')
                     if not isinstance(pdf_output, bytes):
                         pdf_output = bytes(pdf_output, 'latin-1') if isinstance(pdf_output, str) else bytes(pdf_output)
 
-                    st.download_button("📥 Scarica Report PDF", data=pdf_output, file_name="Report_Arredamento.pdf", mime="application/pdf")
+                    st.download_button("📥 Scarica Report PDF", data=pdf_output, file_name="Report_Jacopo.pdf", mime="application/pdf")
                 except Exception as e:
                     st.error(f"Errore PDF: {e}")
         else:
-            st.warning("Nessun articolo confermato (S) trovato nelle stanze.")
+            st.warning("Nessun dato confermato trovato.")
 
     # --- 2. STANZE ---
     elif selezione in stanze_reali:
@@ -138,7 +148,6 @@ else:
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True,
                                      num_rows="dynamic" if can_edit_structure else "fixed")
             if st.form_submit_button("💾 SALVA"):
-                # Ricalcolo
                 for i in range(len(df_edit)):
                     try:
                         p = float(df_edit.at[i, 'Prezzo Pieno'])
