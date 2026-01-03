@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V15.0", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V15.1", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -19,7 +19,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola: Proprietà con à accentata
+        # Nota: Proprietà con à accentata
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -31,7 +31,6 @@ def safe_clean_df(df):
     for col in text_cols:
         if col in df.columns:
             df[col] = df[col].astype(str).replace(['None', 'nan', '104807', '<NA>', 'undefined'], '')
-
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
         if c in df.columns:
@@ -61,15 +60,13 @@ else:
             st.session_state.clear()
             st.rerun()
 
-    # --- RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
-
-        # Recupero Budget con fallback di sicurezza
         try:
+            # Caricamento robusto del budget
             df_imp = conn.read(worksheet="Impostazioni", ttl=0)
             budget_iniziale = float(df_imp.iloc[0, 1])
-        except Exception:
+        except:
             budget_iniziale = 15000.0
 
         all_rows = []
@@ -117,28 +114,26 @@ else:
 
                     pdf.set_font('Arial', '', 9); pdf.set_text_color(0, 0, 0)
                     for _, row in df_final.iterrows():
-                        articolo_testo = str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1')
-                        linee = pdf.multi_cell(90, 5, articolo_testo, split_only=True)
-                        h_riga = max(10, len(linee) * 5)
+                        txt = str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1')
+                        # Calcolo altezza riga basato sull'articolo
+                        linee = pdf.multi_cell(90, 5, txt, split_only=True)
+                        h = max(10, len(linee) * 5)
 
-                        curr_x, curr_y = pdf.get_x(), pdf.get_y()
-                        pdf.cell(30, h_riga, str(row['Ambiente']), 1)
-                        pdf.multi_cell(90, 5, articolo_testo, 1)
-                        pdf.set_xy(curr_x + 120, curr_y)
-                        pdf.cell(35, h_riga, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
-                        pdf.cell(35, h_riga, f"{row['Versato']:,.2f}", 1, 1, 'R')
+                        x, y = pdf.get_x(), pdf.get_y()
+                        pdf.cell(30, h, str(row['Ambiente']), 1)
+                        pdf.multi_cell(90, 5, txt, 1)
+                        pdf.set_xy(x + 120, y)
+                        pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
+                        pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
 
-                    pdf_output = pdf.output(dest='S')
-                    st.download_button("📥 Scarica Report PDF", data=bytes(pdf_output), file_name="Report_Arredi.pdf", mime="application/pdf")
+                    pdf_out = pdf.output(dest='S')
+                    st.download_button("📥 Scarica Report PDF", data=bytes(pdf_out), file_name="Report_Arredi.pdf", mime="application/pdf")
                 except Exception as e:
                     st.error(f"Errore PDF: {e}")
 
             st.subheader("Dettaglio Articoli")
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
-        else:
-            st.info("Nessun articolo confermato (S) trovato.")
 
-    # --- STANZE ---
     elif selezione in stanze_reali:
         st.title(f"🏠 {selezione.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=selezione, ttl=0))
@@ -149,8 +144,8 @@ else:
             config = {
                 col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"]),
                 col_stato: st.column_config.SelectboxColumn(col_stato, options=["", "Acconto", "Saldato", "Ordinato", "Preventivo"]),
-                "Link Fattura": st.column_config.LinkColumn("📂 Fattura", display_text="🌐 Apri Documento"),
-                "Note": st.column_config.TextColumn("Note")
+                "Versato": st.column_config.NumberColumn("Versato", format="%.2f €"),
+                "Link Fattura": st.column_config.LinkColumn("📂 Fattura", display_text="🌐 Apri Documento")
             }
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
 
@@ -163,16 +158,17 @@ else:
                         df_edit.at[df_edit.index[i], 'Costo'] = costo
                         df_edit.at[df_edit.index[i], 'Importo Totale'] = totale
 
+                        # NUOVA LOGICA SALVATAGGIO:
                         stato_val = str(df_edit.iloc[i][col_stato]).strip()
                         if stato_val == "" or stato_val.lower() == "none":
                             df_edit.at[df_edit.index[i], 'Versato'] = 0.0
                         elif stato_val == "Saldato":
                             df_edit.at[df_edit.index[i], 'Versato'] = totale
+                        # Se è Acconto, NON modifichiamo il valore di Versato, salviamo quello inserito!
                     except: continue
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Salvataggio completato!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Dati aggiornati correttamente!"); st.balloons(); time.sleep(1); st.rerun()
 
-    # --- WISHLIST ---
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
