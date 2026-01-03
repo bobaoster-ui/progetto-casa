@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V14.6", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V14.7", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -19,7 +19,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Nota: Proprietà con à accentata
+        # Regola: Proprietà con à accentata
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -71,6 +71,7 @@ else:
             st.session_state.clear()
             st.rerun()
 
+    # --- RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
         try:
@@ -112,7 +113,6 @@ else:
             st.subheader("Dettaglio Articoli")
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
-            # --- FIX GENERAZIONE PDF ---
             if st.button("📄 Genera Report PDF"):
                 try:
                     pdf = PDF()
@@ -120,33 +120,27 @@ else:
                     pdf.set_font('Arial', 'B', 10)
                     pdf.set_fill_color(*COLOR_AZZURRO)
                     pdf.set_text_color(255, 255, 255)
-
                     pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True)
                     pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True)
                     pdf.cell(35, 10, 'Totale', 1, 0, 'C', True)
                     pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
 
-                    pdf.set_font('Arial', '', 9)
-                    pdf.set_text_color(0, 0, 0)
-
+                    pdf.set_font('Arial', '', 9); pdf.set_text_color(0, 0, 0)
                     for _, row in df_final.iterrows():
                         x, y = pdf.get_x(), pdf.get_y()
                         pdf.cell(30, 10, str(row['Ambiente']), 1)
-                        # Pulizia estrema del testo per il PDF
-                        testo_oggetto = str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1')
-                        pdf.multi_cell(90, 5, testo_oggetto, 1)
-                        y_e = pdf.get_y()
-                        pdf.set_xy(x + 120, y)
-                        h = max(10, y_e - y)
+                        pdf.multi_cell(90, 5, str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1'), 1)
+                        y_e = pdf.get_y(); pdf.set_xy(x + 120, y); h = max(10, y_e - y)
                         pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
                         pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
 
-                    # Generazione binaria sicura
-                    pdf_output = pdf.output(dest='S').encode('latin-1')
-                    st.download_button(label="📥 Scarica Report PDF", data=pdf_output, file_name="Report_Arredi.pdf", mime="application/pdf")
+                    # FIX: Rimosso .encode('latin-1') perché dest='S' su bytearray fallisce se ri-encodato
+                    pdf_bytes = pdf.output(dest='S')
+                    st.download_button("📥 Scarica Report PDF", data=bytes(pdf_bytes), file_name="Report_Arredi.pdf", mime="application/pdf")
                 except Exception as e:
-                    st.error(f"Errore durante la creazione del PDF: {e}")
+                    st.error(f"Errore generazione PDF: {e}")
 
+    # --- STANZE ---
     elif selezione in stanze_reali:
         st.title(f"🏠 {selezione.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=selezione, ttl=0))
@@ -172,14 +166,17 @@ else:
                         df_edit.at[df_edit.index[i], 'Importo Totale'] = totale
 
                         stato_val = str(df_edit.iloc[i][col_stato]).strip()
-                        if stato_val == "Saldato":
-                            df_edit.at[df_edit.index[i], 'Versato'] = totale
-                        elif stato_val == "":
+                        # LOGICA RICHIESTA: Se stato è vuoto, azzera sempre il versato
+                        if stato_val == "" or stato_val.lower() == "none":
                             df_edit.at[df_edit.index[i], 'Versato'] = 0.0
+                        elif stato_val == "Saldato":
+                            df_edit.at[df_edit.index[i], 'Versato'] = totale
+                        # Se è 'Acconto', mantiene il valore inserito manualmente dall'utente
                     except: continue
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Salvataggio completato!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Salvataggio riuscito!"); st.balloons(); time.sleep(1); st.rerun()
 
+    # --- WISHLIST ---
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
