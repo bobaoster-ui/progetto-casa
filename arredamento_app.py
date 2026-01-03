@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V10.1", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V10.3", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -58,18 +58,19 @@ else:
             st.session_state.clear()
             st.rerun()
 
-    # --- 1. RIEPILOGO GENERALE (Logica Budget corretta) ---
+    # --- 1. RIEPILOGO GENERALE (Mappatura esatta Parametro/Valore) ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
 
         try:
             df_imp = conn.read(worksheet="Impostazioni", ttl=0)
             df_imp.columns = [str(c).strip() for c in df_imp.columns]
-            # Cerchiamo il valore nella colonna 'Totale' dove il Parametro è 'ValoreBudget'
-            budget_iniziale = pd.to_numeric(df_imp.loc[df_imp['Parametro'] == 'ValoreBudget', 'Totale'].values[0], errors='coerce')
+            # CERCA: Colonna 'Valore' dove 'Parametro' == 'Budget Totale'
+            budget_row = df_imp[df_imp['Parametro'] == 'Budget Totale']
+            budget_iniziale = pd.to_numeric(budget_row['Valore'].values[0], errors='coerce')
         except:
             budget_iniziale = 0.0
-            st.warning("Impossibile leggere il Budget dal foglio 'Impostazioni'. Controlla le colonne 'Parametro' e 'Totale'.")
+            st.warning("Errore lettura Budget. Verifica che nel foglio 'Impostazioni' ci sia 'Budget Totale' sotto 'Parametro' e il numero sotto 'Valore'.")
 
         all_rows = []
         for s in stanze_reali:
@@ -104,7 +105,7 @@ else:
 
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
-            if st.button("📄 Report PDF"):
+            if st.button("📄 Genera Report PDF"):
                 pdf = PDF(); pdf.add_page(); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(*COLOR_AZZURRO); pdf.set_text_color(255,255,255)
                 pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True); pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True); pdf.cell(35, 10, 'Totale', 1, 0, 'C', True); pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
                 pdf.set_font('Arial', '', 9); pdf.set_text_color(0,0,0)
@@ -144,14 +145,14 @@ else:
                         if stato_val == "Saldato": df_edit.at[df_edit.index[i], 'Versato'] = totale
                         elif stato_val in ["", "None", "nan", "Preventivo"]: df_edit.at[df_edit.index[i], 'Versato'] = 0.0
 
-                        # Fix Link forzato
+                        # ULTIMO TENTATIVO LINK: Pulizia totale
                         if "Link" in df_edit.columns:
-                            link_txt = str(df_edit.iloc[i]["Link"]).strip()
-                            df_edit.at[df_edit.index[i], "Link"] = link_txt if link_txt.lower() not in ["nan", "none"] else ""
+                            l = str(df_edit.iloc[i]["Link"]).strip()
+                            df_edit.at[df_edit.index[i], "Link"] = l if l.lower() not in ["nan", "none", ""] else ""
                     except: continue
 
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Dati sincronizzati!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Sincronizzazione completata!"); st.balloons(); time.sleep(1); st.rerun()
 
     # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
