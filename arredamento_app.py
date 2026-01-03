@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V8.4", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V8.5", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_AZZURRO = (46, 117, 182)
@@ -21,7 +21,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola fissa: Proprietà con à accentata
+        # Regola fissa: Proprietà con à
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -29,6 +29,7 @@ class PDF(FPDF):
 # --- FUNZIONE PULIZIA DATI ---
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame(), 'Acquista S/N', 'Stato Pagamento'
+    # Pulizia nomi colonne
     df.columns = [str(c).strip() for c in df.columns]
 
     if 'Oggetto' not in df.columns and 'Articolo' in df.columns:
@@ -37,13 +38,15 @@ def safe_clean_df(df):
     col_sn = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), 'Acquista S/N')
     col_stato = next((c for c in ['Stato Pagamento', 'Stato', 'Pagamento'] if c in df.columns), 'Stato Pagamento')
 
+    # Inizializzazione colonne se mancano
     if col_sn not in df.columns: df[col_sn] = 'N'
     if col_stato not in df.columns: df[col_stato] = ''
 
-    # Assicuriamoci che le colonne numeriche esistano
     for c in ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']:
-        if c not in df.columns: df[c] = 0.0
-        df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
+        else:
+            df[c] = 0.0
 
     return df, col_sn, col_stato
 
@@ -62,13 +65,11 @@ else:
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
     with st.sidebar:
-        # LOGO
         try: st.image("logo.png", use_container_width=True)
-        except: st.info("Carica 'logo.png' per vederlo qui.")
-
+        except: st.info("Logo non trovato.")
         st.markdown("---")
         can_edit_structure = st.toggle("Modifica Struttura", value=False)
-        selezione = st.selectbox("Menu Principale:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
+        selezione = st.selectbox("Menu:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
         if st.button("Logout 🚪"):
             st.session_state.clear()
             st.rerun()
@@ -90,10 +91,7 @@ else:
         if all_rows:
             df_final = pd.concat(all_rows)
             tot_conf, tot_versato = df_final['Importo Totale'].sum(), df_final['Versato'].sum()
-            m1, m2, m3 = st.columns(3)
-            m1.metric("CONFERMATO", f"{tot_conf:,.2f} €")
-            m2.metric("PAGATO", f"{tot_versato:,.2f} €")
-            m3.metric("DA SALDARE", f"{(tot_conf - tot_versato):,.2f} €")
+            m1, m2, m3 = st.columns(3); m1.metric("CONFERMATO", f"{tot_conf:,.2f} €"); m2.metric("PAGATO", f"{tot_versato:,.2f} €"); m3.metric("RESIDUO", f"{(tot_conf - tot_versato):,.2f} €")
 
             st.divider()
             g1, g2 = st.columns(2)
@@ -128,32 +126,33 @@ else:
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
 
             if st.form_submit_button("💾 SALVA"):
-                # Applichiamo i calcoli riga per riga sul dataframe modificato
-                for i in range(len(df_edit)):
+                # Trasformiamo l'editor in un dataframe pulito
+                df_to_save = df_edit.copy()
+
+                for i in range(len(df_to_save)):
                     try:
-                        p = float(df_edit.iloc[i]['Prezzo Pieno'])
-                        s = float(df_edit.iloc[i]['Sconto %'])
-                        q = float(df_edit.iloc[i]['Acquistato'])
+                        # Ricalcolo matematico forzato
+                        p = float(df_to_save.iloc[i]['Prezzo Pieno'])
+                        s = float(df_to_save.iloc[i]['Sconto %'])
+                        q = float(df_to_save.iloc[i]['Acquistato'])
 
-                        # Calcolo Costo Unitario
-                        costo = p * (1 - (s/100)) if p > 0 else float(df_edit.iloc[i]['Costo'])
-                        df_edit.at[df_edit.index[i], 'Costo'] = costo
+                        costo = p * (1 - (s/100)) if p > 0 else float(df_to_save.iloc[i]['Costo'])
+                        df_to_save.at[df_to_save.index[i], 'Costo'] = costo
 
-                        # Calcolo Importo Totale
                         totale_riga = costo * q
-                        df_edit.at[df_edit.index[i], 'Importo Totale'] = totale_riga
+                        df_to_save.at[df_to_save.index[i], 'Importo Totale'] = totale_riga
 
-                        # LOGICA SALDATO (Controllo stringa pulita)
-                        stato_val = str(df_edit.iloc[i][col_stato]).strip()
-                        if stato_val == "Saldato":
-                            df_edit.at[df_edit.index[i], 'Versato'] = totale_riga
-                    except:
-                        continue
+                        # LOGICA SALDATO FORZATA
+                        stato_attuale = str(df_to_save.iloc[i][col_stato]).strip()
+                        if stato_attuale == "Saldato":
+                            df_to_save.at[df_to_save.index[i], 'Versato'] = totale_riga
+                    except: continue
 
-                conn.update(worksheet=selezione, data=df_edit)
+                # INVIO DATI A GOOGLE
+                conn.update(worksheet=selezione, data=df_to_save)
                 st.balloons()
-                st.success("Dati aggiornati correttamente!")
-                time.sleep(1.5)
+                st.success(f"Salvato! Stato: {selezione}")
+                time.sleep(1)
                 st.rerun()
 
     # --- 3. WISHLIST ---
