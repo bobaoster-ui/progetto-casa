@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V14.9", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V15.0", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -30,8 +30,7 @@ def safe_clean_df(df):
     text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link']
     for col in text_cols:
         if col in df.columns:
-            # Sostituiamo nan e None con stringa vuota per evitare brutte scritte nel PDF
-            df[col] = df[col].astype(str).replace(['None', 'nan', '104807', '<NA>'], '')
+            df[col] = df[col].astype(str).replace(['None', 'nan', '104807', '<NA>', 'undefined'], '')
 
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
@@ -53,15 +52,25 @@ else:
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
     with st.sidebar:
+        try: st.image("logo.png", use_container_width=True)
+        except: pass
+        st.markdown("---")
         can_edit_structure = st.toggle("Modifica Struttura", value=False)
         selezione = st.selectbox("Menu:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
+        if st.button("Logout 🚪"):
+            st.session_state.clear()
+            st.rerun()
 
+    # --- RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
+
+        # Recupero Budget con fallback di sicurezza
         try:
-            df_imp = conn.read(worksheet="Impostazioni", ttl=0, header=None)
-            budget_iniziale = float(df_imp.iloc[1, 1])
-        except: budget_iniziale = 15000.0
+            df_imp = conn.read(worksheet="Impostazioni", ttl=0)
+            budget_iniziale = float(df_imp.iloc[0, 1])
+        except Exception:
+            budget_iniziale = 15000.0
 
         all_rows = []
         for s in stanze_reali:
@@ -77,6 +86,22 @@ else:
 
         if all_rows:
             df_final = pd.concat(all_rows)
+            tot_conf = df_final['Importo Totale'].sum()
+            tot_versato = df_final['Versato'].sum()
+
+            c1, c2, c3 = st.columns(3)
+            c1.metric("BUDGET", f"{budget_iniziale:,.2f} €")
+            c2.metric("CONFERMATO", f"{tot_conf:,.2f} €", delta=f"{budget_iniziale-tot_conf:,.2f}")
+            c3.metric("PAGATO", f"{tot_versato:,.2f} €")
+
+            st.divider()
+            g1, g2 = st.columns(2)
+            with g1:
+                df_pie = df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index()
+                st.plotly_chart(px.pie(df_pie, values='Importo Totale', names='Ambiente', title="Spesa per Stanza", hole=0.4), use_container_width=True)
+            with g2:
+                df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato", "Pagato"], "Euro": [budget_iniziale, tot_conf, tot_versato]})
+                st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce"), use_container_width=True)
 
             if st.button("📄 Genera Report PDF"):
                 try:
@@ -85,49 +110,35 @@ else:
                     pdf.set_font('Arial', 'B', 10)
                     pdf.set_fill_color(*COLOR_AZZURRO)
                     pdf.set_text_color(255, 255, 255)
-
-                    # Intestazioni
                     pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True)
                     pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True)
                     pdf.cell(35, 10, 'Totale', 1, 0, 'C', True)
                     pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
 
-                    pdf.set_font('Arial', '', 9)
-                    pdf.set_text_color(0, 0, 0)
-
+                    pdf.set_font('Arial', '', 9); pdf.set_text_color(0, 0, 0)
                     for _, row in df_final.iterrows():
-                        # Prepariamo i testi
-                        stanza = str(row['Ambiente'])
-                        articolo = str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1')
-                        totale = f"{row['Importo Totale']:,.2f}"
-                        versato = f"{row['Versato']:,.2f}"
-
-                        # 1. Calcoliamo quante linee servono per l'articolo
-                        linee = pdf.multi_cell(90, 5, articolo, split_only=True)
+                        articolo_testo = str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1')
+                        linee = pdf.multi_cell(90, 5, articolo_testo, split_only=True)
                         h_riga = max(10, len(linee) * 5)
 
-                        # 2. Otteniamo la posizione corrente
-                        curr_x = pdf.get_x()
-                        curr_y = pdf.get_y()
-
-                        # 3. Disegniamo tutte le celle con la stessa altezza h_riga
-                        pdf.cell(30, h_riga, stanza, 1, 0, 'L')
-
-                        # multi_cell per l'articolo (bisogna resettare la X dopo)
-                        pdf.multi_cell(90, 5, articolo, 1, 'L')
-
-                        # Torniamo su per disegnare le ultime due colonne
+                        curr_x, curr_y = pdf.get_x(), pdf.get_y()
+                        pdf.cell(30, h_riga, str(row['Ambiente']), 1)
+                        pdf.multi_cell(90, 5, articolo_testo, 1)
                         pdf.set_xy(curr_x + 120, curr_y)
-                        pdf.cell(35, h_riga, totale, 1, 0, 'R')
-                        pdf.cell(35, h_riga, versato, 1, 1, 'R')
+                        pdf.cell(35, h_riga, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
+                        pdf.cell(35, h_riga, f"{row['Versato']:,.2f}", 1, 1, 'R')
 
-                    pdf_bytes = pdf.output(dest='S')
-                    st.download_button("📥 Scarica Report PDF", data=bytes(pdf_bytes), file_name="Report_Arredi.pdf", mime="application/pdf")
+                    pdf_output = pdf.output(dest='S')
+                    st.download_button("📥 Scarica Report PDF", data=bytes(pdf_output), file_name="Report_Arredi.pdf", mime="application/pdf")
                 except Exception as e:
-                    st.error(f"Errore: {e}")
+                    st.error(f"Errore PDF: {e}")
 
+            st.subheader("Dettaglio Articoli")
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
+        else:
+            st.info("Nessun articolo confermato (S) trovato.")
 
+    # --- STANZE ---
     elif selezione in stanze_reali:
         st.title(f"🏠 {selezione.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=selezione, ttl=0))
@@ -159,8 +170,9 @@ else:
                             df_edit.at[df_edit.index[i], 'Versato'] = totale
                     except: continue
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Dati salvati!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Salvataggio completato!"); st.balloons(); time.sleep(1); st.rerun()
 
+    # --- WISHLIST ---
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
