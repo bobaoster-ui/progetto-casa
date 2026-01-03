@@ -7,12 +7,12 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V6.3", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V6.4", layout="wide", page_icon="🏠")
 
 # Palette Colori Professionale
 COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
 
-# --- CLASSE PER IL PDF AGGIORNATA ---
+# --- CLASSE PER IL PDF ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(46, 117, 182)
@@ -60,7 +60,7 @@ else:
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
     selezione = st.sidebar.selectbox("Menu Principale:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
 
-    # --- 1. RIEPILOGO GENERALE (DASHBOARD FINANZIARIA) ---
+    # --- 1. RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
         try:
@@ -79,11 +79,9 @@ else:
                     df_s.columns = [str(c).strip() for c in df_s.columns]
                     col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df_s.columns), 'Acquista S/N')
 
-                    # Filtriamo solo i confermati "S" per il budget e i pagamenti
                     conf_mask = df_s[col_s].astype(str).str.upper() == 'S'
                     df_c = df_s[conf_mask].copy()
 
-                    # Calcolo spesa totale per stanza (indipendente dalla scelta S/N per il grafico)
                     importo_stanza = pd.to_numeric(df_s['Importo Totale'], errors='coerce').fillna(0).sum()
                     if importo_stanza > 0:
                         dati_per_grafico.append({"Stanza": s.capitalize(), "Budget": importo_stanza})
@@ -123,50 +121,41 @@ else:
         residuo_paga = tot_conf - tot_versato
         c3.metric("RESIDUO DA SALDARE", f"{residuo_paga:,.2f} €", delta=f"-{residuo_paga:,.2f}", delta_color="inverse")
 
-        col_left, col_right = st.columns(2)
-        with col_left:
-            if dati_per_grafico:
-                fig_pie = px.pie(pd.DataFrame(dati_per_grafico), values='Budget', names='Stanza', title="Ripartizione Spese", hole=0.4, color_discrete_sequence=COLOR_PALETTE)
-                st.plotly_chart(fig_pie, use_container_width=True)
-        with col_right:
-            df_cash_plot = pd.DataFrame({"Stato": ["Versato", "Residuo"], "Euro": [tot_versato, max(0, residuo_paga)]})
-            fig_bar = px.bar(df_cash_plot, x="Stato", y="Euro", color="Stato", color_discrete_map={"Versato": "#2ECC71", "Residuo": "#E74C3C"}, title="Copertura Pagamenti")
-            st.plotly_chart(fig_bar, use_container_width=True)
-
         if lista_dettaglio:
             df_final = pd.concat(lista_dettaglio)
             st.subheader("📝 Dettaglio Pagamenti Confermati")
             st.dataframe(df_final, use_container_width=True, hide_index=True)
 
-            # PDF GENERATION
+            # --- GENERAZIONE PDF ---
             pdf = PDF()
-# --- TABELLA PDF CON TESTO A CAPO ---
+            pdf.add_page() # RIGA CRUCIALE: crea la pagina
+
+            # Intestazione Tabella
+            pdf.set_font("Arial", 'B', 8)
+            pdf.set_fill_color(230, 230, 230)
             pdf.cell(30, 10, 'Ambiente', 1, 0, 'C', True)
             pdf.cell(60, 10, 'Oggetto', 1, 0, 'C', True)
             pdf.cell(35, 10, 'Importo Tot.', 1, 0, 'C', True)
             pdf.cell(35, 10, 'Versato', 1, 0, 'C', True)
             pdf.cell(30, 10, 'Stato', 1, 1, 'C', True)
 
+            # Corpo Tabella con Testo a Capo
             pdf.set_font("Arial", '', 8)
             for _, row in df_final.iterrows():
-                # Memorizziamo la posizione Y iniziale della riga
                 y_inizio = pdf.get_y()
                 x_inizio = pdf.get_x()
 
-                # 1. Scriviamo l'Oggetto con MultiCell (che può andare a capo)
-                # Spostiamoci alla X della seconda colonna (30)
+                # 1. Scriviamo Oggetto (MultiCell) prima per calcolare altezza
                 pdf.set_xy(x_inizio + 30, y_inizio)
                 pdf.multi_cell(60, 5, str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1'), 1)
 
-                # Calcoliamo quanto è diventata alta la cella dell'oggetto
                 y_fine = pdf.get_y()
-                altezza_riga = y_fine - y_inizio
+                altezza_riga = max(10, y_fine - y_inizio) # Altezza minima 10
 
-                # 2. Torniamo all'inizio della riga per disegnare le altre celle con l'altezza calcolata
+                # 2. Riempire le altre celle con l'altezza corretta
                 pdf.set_xy(x_inizio, y_inizio)
                 pdf.cell(30, altezza_riga, str(row['Ambiente']), 1)
 
-                # Saltiamo la colonna oggetto (già scritta) e facciamo le altre
                 pdf.set_xy(x_inizio + 90, y_inizio)
                 pdf.cell(35, altezza_riga, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
                 pdf.cell(35, altezza_riga, f"{row['Versato']:,.2f}", 1, 0, 'R')
@@ -193,24 +182,18 @@ else:
 
             df_display = df_wish.copy()
             df_display['Anteprima'] = df_display['Foto']
-            cols_order = ['Oggetto', 'Anteprima', 'Prezzo Stimato', 'Link', 'Note', 'Foto']
-            df_display = df_display[[c for c in cols_order if c in df_display.columns]]
-
             config_wish = {
                 "Anteprima": st.column_config.ImageColumn("Preview", width="medium"),
                 "Link": st.column_config.LinkColumn("🔗 Link", display_text="Apri"),
                 "Note": st.column_config.TextColumn("Note", width="large"),
                 "Prezzo Stimato": st.column_config.NumberColumn("Budget €", format="%.2f"),
             }
-            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v6_3")
+            df_edit_wish = st.data_editor(df_display, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_wish, key="wish_v6_4")
 
             if st.button("💾 SALVA WISHLIST"):
                 df_to_save = df_edit_wish.drop(columns=['Anteprima'])
                 conn.update(worksheet="desideri", data=df_to_save)
-                st.balloons()
-                st.success("Wishlist salvata!")
-                time.sleep(1)
-                st.rerun()
+                st.balloons(); st.success("Wishlist salvata!"); time.sleep(1); st.rerun()
 
     # --- 3. STANZE ---
     else:
@@ -238,26 +221,15 @@ else:
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=config_stanza, key=f"ed_{selezione}")
 
             if st.button("💾 SALVA E RICALCOLA"):
-                with st.spinner("Calcolo in corso..."):
-                    # Trasformazione numerica rigorosa
+                with st.spinner("Calcolo..."):
                     for col in ['Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo', 'Versato']:
                         df_edit[col] = pd.to_numeric(df_edit[col], errors='coerce').fillna(0)
-
                     for i in range(len(df_edit)):
-                        # Logica Sconto -> Costo
                         if df_edit.at[i, 'Prezzo Pieno'] > 0:
                             df_edit.at[i, 'Costo'] = df_edit.at[i, 'Prezzo Pieno'] * (1 - (df_edit.at[i, 'Sconto %'] / 100))
-
-                        # Logica Quantità -> Totale
                         it = df_edit.at[i, 'Costo'] * df_edit.at[i, 'Acquistato']
                         df_edit.at[i, 'Importo Totale'] = it
-
-                        # Automazione "Saldato"
                         if df_edit.at[i, 'Stato Pagamento'] == "Saldato":
                             df_edit.at[i, 'Versato'] = it
-
                     conn.update(worksheet=selezione, data=df_edit)
-                    st.balloons()
-                    st.success("Tutto salvato!")
-                    time.sleep(1)
-                    st.rerun()
+                    st.balloons(); st.success("Salvato!"); time.sleep(1); st.rerun()
