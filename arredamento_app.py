@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V11.0", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V11.2", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -19,7 +19,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola: Proprietà con à
+        # Regola: Proprietà con à accentata
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -49,7 +49,14 @@ else:
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
     with st.sidebar:
-        st.markdown("### 🏠 Menu Gestione")
+        # --- REINSERIMENTO LOGO ---
+        try:
+            st.image("logo.png", use_container_width=True)
+        except:
+            st.info("Logo non trovato nel server")
+
+        st.markdown("---")
+        st.markdown("### 🏠 Pannello Controllo")
         can_edit_structure = st.toggle("Modifica Struttura", value=False)
         selezione = st.selectbox("Vai a:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
         if st.button("Logout 🚪"):
@@ -61,13 +68,12 @@ else:
         st.title("🏠 Dashboard Riepilogo")
 
         try:
-            # Lettura grezza del foglio Impostazioni per evitare errori sui nomi colonne
+            # Lettura diretta cella B2 per il Budget
             df_imp = conn.read(worksheet="Impostazioni", ttl=0, header=None)
-            # Dallo screenshot sappiamo che 15000 è nella seconda riga, seconda colonna (B2)
             budget_iniziale = float(df_imp.iloc[1, 1])
         except Exception as e:
             budget_iniziale = 0.0
-            st.error(f"Errore critico lettura Budget: {e}. Controlla che il foglio 'Impostazioni' non sia vuoto.")
+            st.error(f"Errore Budget: Verifica cella B2 nel foglio 'Impostazioni'.")
 
         all_rows = []
         for s in stanze_reali:
@@ -102,7 +108,7 @@ else:
 
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
-            if st.button("📄 Genera Report PDF"):
+            if st.button("📄 Esporta PDF"):
                 pdf = PDF(); pdf.add_page(); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(*COLOR_AZZURRO); pdf.set_text_color(255,255,255)
                 pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True); pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True); pdf.cell(35, 10, 'Totale', 1, 0, 'C', True); pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
                 pdf.set_font('Arial', '', 9); pdf.set_text_color(0,0,0)
@@ -113,10 +119,8 @@ else:
                     y_e = pdf.get_y(); pdf.set_xy(x_s + 120, y_s); h = max(10, y_e - y_s)
                     pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R'); pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
 
-                # FIX PDF ATTRIBUTEERROR
-                pdf_output = pdf.output(dest='S')
-                st.download_button("📥 Scarica Report PDF", data=bytes(pdf_output), file_name="Report_Jacopo.pdf", mime="application/pdf")
-        else: st.warning("Nessun dato confermato nelle stanze.")
+                st.download_button("📥 Scarica Report PDF", data=pdf.output(dest='S').encode('latin-1'), file_name="Report_Jacopo.pdf", mime="application/pdf")
+        else: st.warning("Nessun dato confermato.")
 
     # --- 2. STANZE ---
     elif selezione in stanze_reali:
@@ -124,8 +128,10 @@ else:
         df = safe_clean_df(conn.read(worksheet=selezione, ttl=0))
         c_sn, c_stato = ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'), ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato')
 
+        if "Link" in df.columns:
+            df["Link"] = df["Link"].astype(str).replace(["104807", "None", "nan"], "")
+
         with st.form(f"form_{selezione}"):
-            # Usiamo LinkColumn anche qui per replicare il comportamento della Wishlist
             config = {
                 c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]),
                 c_stato: st.column_config.SelectboxColumn(c_stato, options=["", "Acconto", "Saldato", "Ordinato", "Preventivo"]),
@@ -145,14 +151,10 @@ else:
                         stato_val = str(df_edit.iloc[i][c_stato]).strip()
                         if stato_val == "Saldato": df_edit.at[df_edit.index[i], 'Versato'] = totale
                         elif stato_val in ["", "None", "nan", "Preventivo"]: df_edit.at[df_edit.index[i], 'Versato'] = 0.0
-
-                        if "Link" in df_edit.columns:
-                            l = str(df_edit.iloc[i]["Link"]).strip()
-                            df_edit.at[df_edit.index[i], "Link"] = l if l.lower() not in ["nan", "none", ""] else ""
                     except: continue
 
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Sincronizzazione completata!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Salvataggio eseguito!"); st.balloons(); time.sleep(1); st.rerun()
 
     # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
