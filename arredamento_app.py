@@ -7,21 +7,34 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V9.0", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V9.1", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_AZZURRO = (46, 117, 182)
 
+# --- CLASSE PDF ---
+class PDF(FPDF):
+    def header(self):
+        self.set_fill_color(*COLOR_AZZURRO)
+        self.rect(0, 0, 210, 40, 'F')
+        self.set_font('Arial', 'B', 16)
+        self.set_text_color(255, 255, 255)
+        self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
+        self.set_font('Arial', 'I', 10)
+        # Regola fissa: Proprietà con à accentata
+        testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
+        self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
+        self.ln(15)
+
 # --- FUNZIONE PULIZIA DATI ---
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
-    # Pulizia nomi colonne
     df.columns = [str(c).strip() for c in df.columns]
 
     if 'Articolo' in df.columns and 'Oggetto' not in df.columns:
         df['Oggetto'] = df['Articolo']
 
-    # Conversione numerica sicura
+    # Pulizia numerica: trattiamo i vuoti come 0.0 per i calcoli
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
         if c in df.columns:
@@ -43,15 +56,20 @@ else:
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
     with st.sidebar:
-        try: st.image("logo.png", use_container_width=True)
-        except: st.info("Logo non trovato")
+        # LOGO (Assicurati che il file si chiami logo.png)
+        try:
+            st.image("logo.png", use_container_width=True)
+        except:
+            st.info("Logo non caricato.")
+
         st.markdown("---")
         can_edit_structure = st.toggle("Modifica Struttura", value=False)
-        selezione = st.selectbox("Menu:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
+        selezione = st.selectbox("Menu Principale:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
         if st.button("Logout 🚪"):
             st.session_state.clear()
             st.rerun()
 
+    # --- 1. RIEPILOGO GENERALE (RIPRISTINATO) ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
         all_rows = []
@@ -65,12 +83,46 @@ else:
                         df_c['Ambiente'] = s.capitalize()
                         all_rows.append(df_c)
             except: continue
+
         if all_rows:
             df_final = pd.concat(all_rows)
-            tot_conf, tot_versato = df_final['Importo Totale'].sum(), df_final['Versato'].sum()
-            m1, m2, m3 = st.columns(3); m1.metric("CONFERMATO", f"{tot_conf:,.2f} €"); m2.metric("PAGATO", f"{tot_versato:,.2f} €"); m3.metric("DA SALDARE", f"{(tot_conf - tot_versato):,.2f} €")
+            tot_conf = df_final['Importo Totale'].sum()
+            tot_versato = df_final['Versato'].sum()
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("CONFERMATO", f"{tot_conf:,.2f} €")
+            m2.metric("PAGATO", f"{tot_versato:,.2f} €")
+            m3.metric("DA SALDARE", f"{(tot_conf - tot_versato):,.2f} €")
+
+            st.divider()
+            # GRAFICI RIPRISTINATI
+            g1, g2 = st.columns(2)
+            with g1:
+                fig_pie = px.pie(df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index(),
+                                 values='Importo Totale', names='Ambiente', title="Budget per Stanza", hole=0.4)
+                st.plotly_chart(fig_pie, use_container_width=True)
+            with g2:
+                df_bar = pd.DataFrame({"Stato": ["Pagato", "Residuo"], "Euro": [tot_versato, max(0, tot_conf - tot_versato)]})
+                fig_bar = px.bar(df_bar, x="Stato", y="Euro", color="Stato",
+                                 color_discrete_map={"Pagato":"#2ECC71","Residuo":"#E74C3C"})
+                st.plotly_chart(fig_bar, use_container_width=True)
+
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
+            # PDF RIPRISTINATO
+            if st.button("📄 Genera Report PDF"):
+                try:
+                    pdf = PDF(); pdf.add_page(); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(*COLOR_AZZURRO); pdf.set_text_color(255,255,255)
+                    pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True); pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True); pdf.cell(35, 10, 'Totale', 1, 0, 'C', True); pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
+                    pdf.set_font('Arial', '', 9); pdf.set_text_color(0,0,0)
+                    for _, row in df_final.iterrows():
+                        pdf.cell(30, 8, str(row['Ambiente']), 1); pdf.cell(90, 8, str(row['Oggetto'])[:45].encode('latin-1', 'replace').decode('latin-1'), 1); pdf.cell(35, 8, f"{row['Importo Totale']:,.2f}", 1, 0, 'R'); pdf.cell(35, 8, f"{row['Versato']:,.2f}", 1, 1, 'R')
+                    pdf_bytes = pdf.output(dest='S').encode('latin-1')
+                    st.download_button("📥 Scarica Report PDF", data=pdf_bytes, file_name="Report_Jacopo.pdf", mime="application/pdf")
+                except Exception as e: st.error(f"Errore PDF: {e}")
+        else: st.warning("Nessun dato confermato trovato.")
+
+    # --- 2. STANZE ---
     elif selezione in stanze_reali:
         st.title(f"🏠 {selezione.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=selezione, ttl=0))
@@ -82,44 +134,40 @@ else:
             c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]),
             c_stato: st.column_config.SelectboxColumn(c_stato, options=["", "Acconto", "Saldato", "Ordinato", "Preventivo"])
         }
-        # Editor
+
         df_edited = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
 
-        if st.button("🚀 SALVA E PULISCI", type="primary"):
-            with st.spinner("Pulizia fantasmi e salvataggio..."):
-                final_df = df_edited.copy()
+        if st.button("💾 SALVA E SINCRONIZZA"):
+            # Lavoriamo su una copia pulita
+            final_df = df_edited.copy()
 
-                for i in range(len(final_df)):
-                    try:
-                        # 1. Calcoli Matematici
-                        p = float(final_df.iloc[i]['Prezzo Pieno'])
-                        s = float(final_df.iloc[i]['Sconto %'])
-                        q = float(final_df.iloc[i]['Acquistato'])
-                        costo = p * (1 - (s/100)) if p > 0 else float(final_df.iloc[i]['Costo'])
-                        totale = costo * q
+            for i in range(len(final_df)):
+                try:
+                    # Calcoli matematici
+                    p, s, q = float(final_df.iloc[i]['Prezzo Pieno']), float(final_df.iloc[i]['Sconto %']), float(final_df.iloc[i]['Acquistato'])
+                    costo = p * (1 - (s/100)) if p > 0 else float(final_df.iloc[i]['Costo'])
+                    totale = costo * q
 
-                        final_df.at[final_df.index[i], 'Costo'] = costo
-                        final_df.at[final_df.index[i], 'Importo Totale'] = totale
+                    final_df.at[final_df.index[i], 'Costo'] = costo
+                    final_df.at[final_df.index[i], 'Importo Totale'] = totale
 
-                        # 2. Logica Saldato (con pulizia nan)
-                        stato_val = str(final_df.iloc[i][c_stato]).strip()
-                        if stato_val == "Saldato":
-                            final_df.at[final_df.index[i], 'Versato'] = totale
-                    except: continue
+                    # LOGICA SALDATO: Molto specifica
+                    stato_attuale = str(final_df.iloc[i][c_stato]).strip()
+                    if stato_attuale == "Saldato":
+                        final_df.at[final_df.index[i], 'Versato'] = totale
+                except: continue
 
-                # --- ESORCISMO DEI NAN ---
-                # Trasformiamo tutto in stringa ma gestiamo i vuoti
-                df_final_clean = final_df.astype(object) # Manteniamo tipi misti
-                for col in df_final_clean.columns:
-                    # Se la colonna è di testo, sostituiamo nan con stringa vuota
-                    df_final_clean[col] = df_final_clean[col].apply(lambda x: "" if pd.isna(x) or str(x).lower() == 'nan' or str(x).lower() == 'none' else x)
+            # --- FIX DEFINITIVO PER GOOGLE SHEETS ---
+            # Sostituiamo i nan reali di pandas con None (che Google Sheets interpreta come vuoto)
+            df_to_sheets = final_df.where(pd.notnull(final_df), None)
 
-                conn.update(worksheet=selezione, data=df_final_clean)
-                st.success("Sincronizzazione riuscita! Fantasmi eliminati.")
-                st.balloons()
-                time.sleep(1)
-                st.rerun()
+            conn.update(worksheet=selezione, data=df_to_sheets)
+            st.success("Sincronizzazione completata con successo!")
+            st.balloons()
+            time.sleep(1)
+            st.rerun()
 
+    # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
