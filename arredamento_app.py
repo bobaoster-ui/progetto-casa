@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V9.9", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V10.0", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_AZZURRO = (46, 117, 182)
@@ -51,7 +51,7 @@ else:
 
     with st.sidebar:
         try: st.image("logo.png", use_container_width=True)
-        except: st.info("Logo mancante")
+        except: st.info("Logo non caricato")
         st.markdown("---")
         can_edit_structure = st.toggle("Modifica Struttura", value=False)
         selezione = st.selectbox("Menu:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
@@ -59,17 +59,17 @@ else:
             st.session_state.clear()
             st.rerun()
 
-    # --- 1. RIEPILOGO GENERALE CON BUDGET ---
+    # --- 1. RIEPILOGO GENERALE (Puntando a Impostazioni) ---
     if selezione == "Riepilogo Generale":
-        st.title("🏠 Dashboard & Budget")
+        st.title("🏠 Dashboard Riepilogo")
 
-        # Caricamento Budget dal foglio 'totali'
         try:
-            df_budget = conn.read(worksheet="totali", ttl=0)
-            budget_iniziale = pd.to_numeric(df_budget.iloc[0, 0], errors='coerce')
+            # Leggiamo il foglio Impostazioni per il Budget
+            df_imp = conn.read(worksheet="Impostazioni", ttl=0)
+            budget_iniziale = pd.to_numeric(df_imp.iloc[0, 0], errors='coerce')
         except:
             budget_iniziale = 0.0
-            st.warning("Foglio 'totali' non trovato o vuoto.")
+            st.warning("Verifica che esista il foglio 'Impostazioni' con il budget nella prima cella.")
 
         all_rows = []
         for s in stanze_reali:
@@ -87,30 +87,25 @@ else:
             df_final = pd.concat(all_rows)
             tot_conf = df_final['Importo Totale'].sum()
             tot_versato = df_final['Versato'].sum()
-            residuo_budget = budget_iniziale - tot_conf
 
-            # Metriche
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("BUDGET INIZIALE", f"{budget_iniziale:,.2f} €")
-            c2.metric("SPESA CONFERMATA", f"{tot_conf:,.2f} €", delta=f"{(tot_conf/budget_iniziale*100):.1f}% del budget" if budget_iniziale > 0 else None, delta_color="inverse")
-            c3.metric("PAGATO EFFETTIVO", f"{tot_versato:,.2f} €")
-            c4.metric("RESIDUO BUDGET", f"{residuo_budget:,.2f} €", delta=f"{residuo_budget:,.2f}", delta_color="normal")
-
-            st.progress(min(max(tot_conf / budget_iniziale, 0.0), 1.0) if budget_iniziale > 0 else 0.0)
+            c1, c2, c3 = st.columns(3)
+            c1.metric("BUDGET", f"{budget_iniziale:,.2f} €")
+            c2.metric("CONFERMATO", f"{tot_conf:,.2f} €", delta=f"{budget_iniziale-tot_conf:,.2f} residuo")
+            c3.metric("PAGATO", f"{tot_versato:,.2f} €")
 
             st.divider()
             g1, g2 = st.columns(2)
             with g1:
                 st.plotly_chart(px.pie(df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index(),
-                                     values='Importo Totale', names='Ambiente', title="Distribuzione per Stanza"), use_container_width=True)
+                                     values='Importo Totale', names='Ambiente', title="Spesa per Stanza", hole=0.4), use_container_width=True)
             with g2:
-                # Grafico a barre confronto Budget vs Spesa
-                df_comp = pd.DataFrame({"Tipo": ["Budget Totale", "Spesa Confermata"], "Valore": [budget_iniziale, tot_conf]})
-                st.plotly_chart(px.bar(df_comp, x="Tipo", y="Valore", color="Tipo", title="Capienza Budget"), use_container_width=True)
+                # Confronto Budget vs Spesa
+                df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato"], "Euro": [budget_iniziale, tot_conf]})
+                st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce"), use_container_width=True)
 
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
-            if st.button("📄 Genera Report PDF"):
+            if st.button("📄 Report PDF"):
                 pdf = PDF(); pdf.add_page(); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(*COLOR_AZZURRO); pdf.set_text_color(255,255,255)
                 pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True); pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True); pdf.cell(35, 10, 'Totale', 1, 0, 'C', True); pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
                 pdf.set_font('Arial', '', 9); pdf.set_text_color(0,0,0)
@@ -118,11 +113,11 @@ else:
                     x_s, y_s = pdf.get_x(), pdf.get_y()
                     pdf.cell(30, 10, str(row['Ambiente']), 1)
                     pdf.multi_cell(90, 5, str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1'), 1)
-                    y_e = pdf.get_y(); pdf.set_xy(x_s + 120, y_s); h = y_e - y_s
+                    y_e = pdf.get_y(); pdf.set_xy(x_s + 120, y_s); h = max(10, y_e - y_s)
                     pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
                     pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
-                st.download_button("📥 Scarica PDF", data=bytes(pdf.output(dest='S')), file_name="Report_Jacopo.pdf", mime="application/pdf")
-        else: st.warning("Nessun dato trovato nelle stanze.")
+                st.download_button("📥 Scarica Report PDF", data=bytes(pdf.output(dest='S')), file_name="Report_Jacopo.pdf", mime="application/pdf")
+        else: st.warning("Nessun dato confermato.")
 
     # --- 2. STANZE ---
     elif selezione in stanze_reali:
@@ -152,14 +147,18 @@ else:
                         if stato_val == "Saldato": df_edit.at[df_edit.index[i], 'Versato'] = totale
                         elif stato_val in ["", "None", "nan", "Preventivo"]: df_edit.at[df_edit.index[i], 'Versato'] = 0.0
 
-                        # Fix Link forzato a testo
+                        # FIX LINK: Aggiunta apice anti-formattazione
                         if "Link" in df_edit.columns:
-                            val = str(df_edit.iloc[i]["Link"]).strip()
-                            df_edit.at[df_edit.index[i], "Link"] = val if val.lower() not in ["nan", "none"] else ""
+                            link_txt = str(df_edit.iloc[i]["Link"]).strip()
+                            if link_txt.startswith("http"):
+                                # L'apice dice a Sheets: "Sono solo testo!"
+                                df_edit.at[df_edit.index[i], "Link"] = "'" + link_txt
+                            elif link_txt.lower() in ["nan", "none", ""]:
+                                df_edit.at[df_edit.index[i], "Link"] = ""
                     except: continue
 
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Salvato correttamente!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Sincronizzazione completata!"); st.balloons(); time.sleep(1); st.rerun()
 
     # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
