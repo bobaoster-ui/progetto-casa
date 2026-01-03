@@ -7,13 +7,12 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V7.5", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V7.6", layout="wide", page_icon="🏠")
 
-# Palette Colori
+# Colori
 COLOR_AZZURRO = (46, 117, 182)
-COLOR_GRIGIO_LUCE = (240, 240, 240)
 
-# --- CLASSE PDF SEMPLIFICATA E ROBUSTA ---
+# --- CLASSE PDF RINFORZATA ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(*COLOR_AZZURRO)
@@ -33,14 +32,33 @@ class PDF(FPDF):
         self.set_text_color(128, 128, 128)
         self.cell(0, 10, f'Pagina {self.page_no()}', align='C')
 
-# --- FUNZIONE PULIZIA DATI ---
+# --- FUNZIONE PULIZIA DATI INTELLIGENTE ---
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
+    # Pulizia nomi colonne da spazi extra
     df.columns = [str(c).strip() for c in df.columns]
+
+    # Assicuriamoci che le colonne critiche esistano sempre (evita KeyError)
+    colonne_necessarie = {
+        'Oggetto': '',
+        'Importo Totale': 0.0,
+        'Versato': 0.0,
+        'Stato Pagamento': 'Da definire',
+        'Prezzo Pieno': 0.0,
+        'Sconto %': 0.0,
+        'Acquistato': 1.0,
+        'Costo': 0.0
+    }
+
+    for col, default in colonne_necessarie.items():
+        if col not in df.columns:
+            df[col] = default
+
+    # Conversione numerica sicura
     num_cols = ['Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo', 'Versato', 'Importo Totale']
     for col in num_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+
     return df
 
 # --- LOGIN ---
@@ -78,11 +96,14 @@ else:
 
         for s in stanze_reali:
             try:
-                df_s = safe_clean_df(conn.read(worksheet=s, ttl=0))
+                raw_s = conn.read(worksheet=s, ttl=0)
+                df_s = safe_clean_df(raw_s)
                 if not df_s.empty:
-                    col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df_s.columns), 'Acquista S/N')
-                    # Solo confermati
-                    df_c = df_s[df_s[col_s].astype(str).str.upper() == 'S'].copy()
+                    # Cerca la colonna di conferma (S/N) con nomi flessibili
+                    col_conf = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df_s.columns), 'Acquista S/N')
+                    if col_conf not in df_s.columns: df_s[col_conf] = 'N'
+
+                    df_c = df_s[df_s[col_conf].astype(str).str.upper() == 'S'].copy()
                     if not df_c.empty:
                         df_c['Ambiente'] = s.capitalize()
                         all_data.append(df_c)
@@ -101,7 +122,7 @@ else:
         if all_data:
             df_final = pd.concat(all_data)
 
-            # Grafici
+            # Grafici protetti
             g1, g2 = st.columns(2)
             with g1:
                 df_pie = df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index()
@@ -112,7 +133,7 @@ else:
 
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato', 'Stato Pagamento']], use_container_width=True, hide_index=True)
 
-            # --- FIX PDF ---
+            # --- PDF FIX ---
             if st.button("📄 Genera Report PDF"):
                 try:
                     pdf = PDF()
@@ -121,39 +142,42 @@ else:
                     pdf.set_fill_color(*COLOR_AZZURRO); pdf.set_text_color(255,255,255)
                     pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True)
                     pdf.cell(80, 10, 'Oggetto', 1, 0, 'C', True)
-                    pdf.cell(40, 10, 'Totale', 1, 0, 'C', True)
-                    pdf.cell(40, 10, 'Versato', 1, 1, 'C', True)
+                    pdf.cell(35, 10, 'Totale', 1, 0, 'C', True)
+                    pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
 
                     pdf.set_font('Arial', '', 9); pdf.set_text_color(0,0,0)
                     for _, row in df_final.iterrows():
                         pdf.cell(30, 8, str(row['Ambiente']), 1)
-                        pdf.cell(80, 8, str(row['Oggetto'])[:40].encode('latin-1', 'replace').decode('latin-1'), 1)
-                        pdf.cell(40, 8, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
-                        pdf.cell(40, 8, f"{row['Versato']:,.2f}", 1, 1, 'R')
+                        # Pulizia testo per PDF
+                        ogg = str(row['Oggetto'])[:40].encode('latin-1', 'replace').decode('latin-1')
+                        pdf.cell(80, 8, ogg, 1)
+                        pdf.cell(35, 8, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
+                        pdf.cell(35, 8, f"{row['Versato']:,.2f}", 1, 1, 'R')
 
-                    # Generazione sicura del PDF come stringa di byte
-                    pdf_bytes = pdf.output(dest='S')
-                    if isinstance(pdf_bytes, str): # Gestione versioni fpdf vecchie
-                        pdf_bytes = pdf_bytes.encode('latin-1')
-
-                    st.download_button("📥 Scarica PDF", data=pdf_bytes, file_name="Report_Jacopo.pdf", mime="application/pdf")
+                    pdf_out = pdf.output(dest='S')
+                    # Forza formato byte per Streamlit
+                    if isinstance(pdf_out, str): pdf_out = pdf_out.encode('latin-1')
+                    st.download_button("📥 Scarica Report", data=pdf_out, file_name="Report_Jacopo.pdf", mime="application/pdf")
                 except Exception as e:
-                    st.error(f"Errore creazione PDF: {e}")
+                    st.error(f"Errore PDF: {e}")
+        else:
+            st.info("Nessun articolo confermato (S) trovato. I grafici appariranno quando confermerai gli acquisti!")
 
     # --- 2. STANZE ---
     elif selezione in stanze_reali:
         st.title(f"🏠 {selezione.capitalize()}")
         try:
-            df = safe_clean_df(conn.read(worksheet=selezione, ttl=0))
-            if not df.empty:
-                with st.form(f"form_{selezione}"):
-                    df_edit = st.data_editor(df, use_container_width=True, hide_index=True,
-                                            num_rows="dynamic" if can_edit_structure else "fixed")
-                    submit = st.form_submit_button("💾 SALVA")
+            raw_data = conn.read(worksheet=selezione, ttl=0)
+            df = safe_clean_df(raw_data)
 
-                if submit:
-                    # Ricalcolo
-                    for i in range(len(df_edit)):
+            with st.form(f"form_{selezione}"):
+                df_edit = st.data_editor(df, use_container_width=True, hide_index=True,
+                                        num_rows="dynamic" if can_edit_structure else "fixed")
+                submit = st.form_submit_button("💾 SALVA")
+
+            if submit:
+                for i in range(len(df_edit)):
+                    try:
                         p = float(df_edit.at[i, 'Prezzo Pieno'])
                         s = float(df_edit.at[i, 'Sconto %'])
                         q = float(df_edit.at[i, 'Acquistato'])
@@ -162,11 +186,12 @@ else:
                         df_edit.at[i, 'Importo Totale'] = costo * q
                         if str(df_edit.at[i, 'Stato Pagamento']) == "Saldato":
                             df_edit.at[i, 'Versato'] = df_edit.at[i, 'Importo Totale']
+                    except: continue
 
-                    conn.update(worksheet=selezione, data=df_edit)
-                    st.success("Salvato!"); time.sleep(1); st.rerun()
-        except:
-            st.error("Errore di connessione a Google Sheets. Riprova tra un istante.")
+                conn.update(worksheet=selezione, data=df_edit)
+                st.success("Dati sincronizzati!"); time.sleep(1); st.rerun()
+        except Exception as e:
+            st.error(f"Errore caricamento: {e}")
 
     # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
@@ -176,5 +201,5 @@ else:
             df_ed_w = st.data_editor(df_w, use_container_width=True, hide_index=True)
             if st.button("Salva Wishlist"):
                 conn.update(worksheet="desideri", data=df_ed_w)
-                st.rerun()
-        except: st.error("Errore caricamento wishlist.")
+                st.success("Wishlist salvata!"); st.rerun()
+        except: st.error("Errore wishlist.")
