@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V6.8", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V6.9", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_PALETTE = ["#2E75B6", "#FFD700", "#1F4E78", "#F4B400", "#4472C4"]
@@ -21,7 +21,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 20, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 11)
-        # Regola fissa: Proprietà con à
+        # Regola fissa: Proprietà con à accentata
         testo_header = f'Proprietà: Jacopo - {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo_header.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -32,19 +32,14 @@ class PDF(FPDF):
         self.set_text_color(128, 128, 128)
         self.cell(0, 10, f'Pagina {self.page_no()}', align='C')
 
-# --- FUNZIONE SALVA-VITA: PULIZIA RIGOROSA ---
+# --- FUNZIONE PULIZIA DATI ---
 def safe_clean_df(df):
-    """Sana il dataframe per prevenire i crash visti negli screenshot"""
     if df is None: return pd.DataFrame()
-    # Pulisce i nomi delle colonne
     df.columns = [str(c).strip() for c in df.columns]
-    # Colonne numeriche che hanno causato il boom
     num_cols = ['Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo', 'Versato', 'Importo Totale']
     for col in num_cols:
         if col in df.columns:
-            # Converte in numero, trasforma gli errori (o i nulli) in 0.0
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-    # Colonne testuali: trasforma i nulli in stringhe vuote
     for col in df.columns:
         if col not in num_cols:
             df[col] = df[col].astype(str).replace(['nan', 'None', '<NA>'], '')
@@ -72,8 +67,7 @@ else:
             st.rerun()
 
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
-    menu_options = ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali
-    selezione = st.sidebar.selectbox("Menu Principale:", menu_options)
+    selezione = st.sidebar.selectbox("Menu Principale:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
 
     # --- 1. RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
@@ -93,10 +87,8 @@ else:
                 if df_s is not None and not df_s.empty:
                     df_s = safe_clean_df(df_s)
                     col_s = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df_s.columns), 'Acquista S/N')
-
                     imp_stanza = df_s['Importo Totale'].sum()
                     if imp_stanza > 0: dati_per_grafico.append({"Stanza": s.capitalize(), "Budget": imp_stanza})
-
                     conf_mask = df_s[col_s].astype(str).str.upper() == 'S'
                     df_c = df_s[conf_mask].copy()
                     if not df_c.empty:
@@ -104,16 +96,13 @@ else:
                         tot_versato += df_c['Versato'].sum()
                         col_o = next((c for c in ['Oggetto', 'Articolo'] if c in df_c.columns), df_c.columns[0])
                         temp_df = pd.DataFrame({
-                            'Ambiente': s.capitalize(),
-                            'Oggetto': df_c[col_o],
-                            'Importo Totale': df_c['Importo Totale'],
-                            'Versato': df_c['Versato'],
+                            'Ambiente': s.capitalize(), 'Oggetto': df_c[col_o],
+                            'Importo Totale': df_c['Importo Totale'], 'Versato': df_c['Versato'],
                             'Stato': df_c['Stato Pagamento'] if 'Stato Pagamento' in df_c.columns else "-"
                         })
                         lista_dettaglio.append(temp_df)
             except: continue
 
-        # Metriche
         st.subheader(f"📊 Budget Totale: {budget_max:,.2f} €")
         perc = min(tot_conf / budget_max, 1.2) if budget_max > 0 else 0
         st.progress(perc)
@@ -122,7 +111,6 @@ else:
         m2.metric("RESIDUO BUDGET", f"{(budget_max - tot_conf):,.2f} €")
         m3.metric("% UTILIZZO", f"{perc:.1%}")
 
-        # Grafici
         g1, g2 = st.columns(2)
         with g1:
             if dati_per_grafico:
@@ -135,7 +123,6 @@ else:
             df_final = pd.concat(lista_dettaglio)
             st.subheader("📝 Dettaglio Pagamenti")
             st.dataframe(df_final, use_container_width=True, hide_index=True)
-
             if st.button("📄 Genera Report PDF"):
                 pdf = PDF(); pdf.add_page()
                 pdf.set_font("Arial", 'B', 8); pdf.set_fill_color(230, 230, 230)
@@ -156,37 +143,51 @@ else:
     # --- 2. STANZE ---
     elif selezione in stanze_reali:
         st.title(f"🏠 {selezione.capitalize()}")
-        try:
-            df_raw = conn.read(worksheet=selezione, ttl="5s")
-            df = safe_clean_df(df_raw)
+        df_raw = conn.read(worksheet=selezione, ttl="5s")
+        df = safe_clean_df(df_raw)
 
-            config = {
-                "Acquista S/N": st.column_config.SelectboxColumn("Scelta", options=["S", "N"]),
-                "Stato Pagamento": st.column_config.SelectboxColumn("Stato", options=["Da Pagare", "Acconto", "Saldato"]),
-                "Importo Totale": st.column_config.NumberColumn("Totale €", format="%.2f", disabled=True),
-                "Link Fattura": st.column_config.LinkColumn("🔗 Doc", display_text="Vedi")
-            }
+        config = {
+            "Acquista S/N": st.column_config.SelectboxColumn("Scelta", options=["S", "N"]),
+            "Stato Pagamento": st.column_config.SelectboxColumn("Stato", options=["Da Pagare", "Acconto", "Saldato"]),
+            "Importo Totale": st.column_config.NumberColumn("Totale €", format="%.2f", disabled=True),
+            "Link Fattura": st.column_config.LinkColumn("🔗 Doc", display_text="Vedi")
+        }
 
-            df_edit = st.data_editor(df, use_container_width=True, hide_index=True,
-                                     num_rows="dynamic" if can_edit_structure else "fixed",
-                                     column_config=config, key=f"ed_{selezione}")
+        df_edit = st.data_editor(df, use_container_width=True, hide_index=True,
+                                 num_rows="dynamic" if can_edit_structure else "fixed",
+                                 column_config=config, key=f"ed_{selezione}")
 
-            if st.button("💾 SALVA E RICALCOLA"):
-                with st.spinner("Sincronizzazione in corso..."):
-                    for i in range(len(df_edit)):
-                        pp = float(df_edit.at[i, 'Prezzo Pieno'])
-                        sc = float(df_edit.at[i, 'Sconto %'])
-                        qta = float(df_edit.at[i, 'Acquistato'])
-                        if pp > 0:
-                            df_edit.at[i, 'Costo'] = pp * (1 - (sc / 100))
-                        df_edit.at[i, 'Importo Totale'] = float(df_edit.at[i, 'Costo']) * qta
-                        if df_edit.at[i, 'Stato Pagamento'] == "Saldato":
-                            df_edit.at[i, 'Versato'] = df_edit.at[i, 'Importo Totale']
+        if st.button("💾 SALVA E RICALCOLA"):
+            with st.spinner("Calcolo in corso..."):
+                # TRASFORMAZIONE IN DF STANDARD PER IL CALCOLO
+                df_to_save = df_edit.copy()
 
-                    conn.update(worksheet=selezione, data=df_edit)
-                    st.balloons(); st.success("Dati sistemati!"); time.sleep(1); st.rerun()
-        except Exception as e:
-            st.error(f"Errore critico: {e}. Prova a ricaricare la pagina.")
+                for i in range(len(df_to_save)):
+                    # 1. Recupero valori forzando il tipo float
+                    p_pieno = float(df_to_save.at[i, 'Prezzo Pieno'])
+                    sconto = float(df_to_save.at[i, 'Sconto %'])
+                    qta = float(df_to_save.at[i, 'Acquistato'])
+                    costo_manuale = float(df_to_save.at[i, 'Costo'])
+
+                    # 2. Logica: se c'è prezzo pieno, calcola il costo. Altrimenti usa il costo manuale.
+                    if p_pieno > 0:
+                        nuovo_costo = p_pieno * (1 - (sconto / 100))
+                        df_to_save.at[i, 'Costo'] = nuovo_costo
+                        costo_finale = nuovo_costo
+                    else:
+                        costo_finale = costo_manuale
+
+                    # 3. Calcolo Totale RIGOROSO
+                    totale_riga = costo_finale * qta
+                    df_to_save.at[i, 'Importo Totale'] = totale_riga
+
+                    # 4. Automazione Saldato
+                    if str(df_to_save.at[i, 'Stato Pagamento']) == "Saldato":
+                        df_to_save.at[i, 'Versato'] = totale_riga
+
+                # Invio dati ricalcolati
+                conn.update(worksheet=selezione, data=df_to_save)
+                st.balloons(); st.success("Dati calcolati e salvati!"); time.sleep(1); st.rerun()
 
     # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
