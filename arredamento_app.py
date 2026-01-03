@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V15.1", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V15.2", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -62,12 +62,14 @@ else:
 
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
+
+        # FIX BUDGET: Lettura ultra-sicura
         try:
-            # Caricamento robusto del budget
-            df_imp = conn.read(worksheet="Impostazioni", ttl=0)
-            budget_iniziale = float(df_imp.iloc[0, 1])
+            df_imp = conn.read(worksheet="Impostazioni", ttl=0, header=None)
+            budget_iniziale = float(df_imp.iloc[1, 1]) # Prende cella B2 (riga 1, col 1)
         except:
             budget_iniziale = 15000.0
+            st.warning("⚠️ Usando budget predefinito (15.000€). Controlla il foglio 'Impostazioni'.")
 
         all_rows = []
         for s in stanze_reali:
@@ -114,8 +116,10 @@ else:
 
                     pdf.set_font('Arial', '', 9); pdf.set_text_color(0, 0, 0)
                     for _, row in df_final.iterrows():
-                        txt = str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1')
-                        # Calcolo altezza riga basato sull'articolo
+                        # Pulizia del nan nel PDF
+                        art = str(row['Oggetto']).replace('nan', '').strip()
+                        txt = art.encode('latin-1', 'replace').decode('latin-1')
+
                         linee = pdf.multi_cell(90, 5, txt, split_only=True)
                         h = max(10, len(linee) * 5)
 
@@ -126,12 +130,12 @@ else:
                         pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
                         pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
 
+                    # FIX PDF ERROR: Non aggiungere .encode() qui
                     pdf_out = pdf.output(dest='S')
                     st.download_button("📥 Scarica Report PDF", data=bytes(pdf_out), file_name="Report_Arredi.pdf", mime="application/pdf")
                 except Exception as e:
-                    st.error(f"Errore PDF: {e}")
+                    st.error(f"Errore generazione PDF: {e}")
 
-            st.subheader("Dettaglio Articoli")
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
     elif selezione in stanze_reali:
@@ -144,7 +148,6 @@ else:
             config = {
                 col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"]),
                 col_stato: st.column_config.SelectboxColumn(col_stato, options=["", "Acconto", "Saldato", "Ordinato", "Preventivo"]),
-                "Versato": st.column_config.NumberColumn("Versato", format="%.2f €"),
                 "Link Fattura": st.column_config.LinkColumn("📂 Fattura", display_text="🌐 Apri Documento")
             }
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
@@ -158,16 +161,16 @@ else:
                         df_edit.at[df_edit.index[i], 'Costo'] = costo
                         df_edit.at[df_edit.index[i], 'Importo Totale'] = totale
 
-                        # NUOVA LOGICA SALVATAGGIO:
                         stato_val = str(df_edit.iloc[i][col_stato]).strip()
+                        # LOGICA RICHIESTA: Se stato è vuoto, azzera il versato
                         if stato_val == "" or stato_val.lower() == "none":
                             df_edit.at[df_edit.index[i], 'Versato'] = 0.0
                         elif stato_val == "Saldato":
                             df_edit.at[df_edit.index[i], 'Versato'] = totale
-                        # Se è Acconto, NON modifichiamo il valore di Versato, salviamo quello inserito!
+                        # Se è Acconto, non tocca il valore che hai inserito!
                     except: continue
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Dati aggiornati correttamente!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Dati aggiornati correttamente su Google Sheets!"); st.balloons(); time.sleep(1); st.rerun()
 
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
