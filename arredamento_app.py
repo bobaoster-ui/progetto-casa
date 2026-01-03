@@ -7,9 +7,9 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V8.1", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V8.3", layout="wide", page_icon="🏠")
 
-# Colori
+# Palette Colori
 COLOR_AZZURRO = (46, 117, 182)
 
 # --- CLASSE PDF ---
@@ -31,28 +31,26 @@ def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame(), 'Acquista S/N', 'Stato Pagamento'
     df.columns = [str(c).strip() for c in df.columns]
 
-    # 1. Mapping Articolo -> Oggetto
     if 'Oggetto' not in df.columns and 'Articolo' in df.columns:
         df['Oggetto'] = df['Articolo']
 
-    # 2. Identificazione dinamica colonne S/N e Stato
     col_sn = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), 'Acquista S/N')
     col_stato = next((c for c in ['Stato Pagamento', 'Stato', 'Pagamento'] if c in df.columns), 'Stato Pagamento')
 
     if col_sn not in df.columns: df[col_sn] = 'N'
     if col_stato not in df.columns: df[col_stato] = ''
 
-    # 3. Colonne numeriche obbligatorie
     target_cols = {'Oggetto': 'Descrizione mancante', 'Importo Totale': 0.0, 'Versato': 0.0}
     for col, val in target_cols.items():
         if col not in df.columns: df[col] = val
 
-    for col in ['Importo Totale', 'Versato']:
-        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+    for col in ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
     return df, col_sn, col_stato
 
-# --- LOGIN ---
+# --- LOGIN E SIDEBAR ---
 if "password_correct" not in st.session_state:
     st.title("🔒 Accesso Riservato")
     u = st.text_input("Utente")
@@ -67,9 +65,16 @@ else:
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
     with st.sidebar:
-        st.markdown("### 🛠 Sicurezza")
+        # --- LOGO IN ALTO A SINISTRA ---
+        # Sostituisci 'logo.png' con il nome del file che hai caricato sul server
+        try:
+            st.image("logo.png", use_container_width=True)
+        except:
+            st.info("Carica il file 'logo.png' nella cartella dell'app per visualizzarlo qui.")
+
+        st.markdown("---")
         can_edit_structure = st.toggle("Modifica Struttura", value=False)
-        selezione = st.selectbox("Menu:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
+        selezione = st.selectbox("Menu Principale:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
         if st.button("Logout 🚪"):
             st.session_state.clear()
             st.rerun()
@@ -91,7 +96,10 @@ else:
         if all_rows:
             df_final = pd.concat(all_rows)
             tot_conf, tot_versato = df_final['Importo Totale'].sum(), df_final['Versato'].sum()
-            m1, m2, m3 = st.columns(3); m1.metric("CONFERMATO", f"{tot_conf:,.2f} €"); m2.metric("PAGATO", f"{tot_versato:,.2f} €"); m3.metric("RESIDUO", f"{(tot_conf - tot_versato):,.2f} €")
+            m1, m2, m3 = st.columns(3)
+            m1.metric("CONFERMATO", f"{tot_conf:,.2f} €")
+            m2.metric("PAGATO", f"{tot_versato:,.2f} €")
+            m3.metric("DA SALDARE", f"{(tot_conf - tot_versato):,.2f} €")
 
             st.divider()
             g1, g2 = st.columns(2)
@@ -124,16 +132,25 @@ else:
                 col_stato: st.column_config.SelectboxColumn(col_stato, options=["", "Acconto", "Saldato", "Ordinato", "Preventivo"])
             }
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
+
             if st.form_submit_button("💾 SALVA"):
                 for i in range(len(df_edit)):
                     try:
                         p, s, q = float(df_edit.at[i, 'Prezzo Pieno']), float(df_edit.at[i, 'Sconto %']), float(df_edit.at[i, 'Acquistato'])
                         costo = p * (1 - (s/100)) if p > 0 else float(df_edit.at[i, 'Costo'])
-                        df_edit.at[i, 'Costo'], df_edit.at[i, 'Importo Totale'] = costo, costo * q
-                        if str(df_edit.at[i, col_stato]) == "Saldato": df_edit.at[i, 'Versato'] = df_edit.at[i, 'Importo Totale']
+                        df_edit.at[i, 'Costo'] = costo
+                        totale_riga = costo * q
+                        df_edit.at[i, 'Importo Totale'] = totale_riga
+
+                        if str(df_edit.at[i, col_stato]) == "Saldato":
+                            df_edit.at[i, 'Versato'] = totale_riga
                     except: continue
+
                 conn.update(worksheet=selezione, data=df_edit)
-                st.balloons(); st.success("Dati e stati aggiornati!"); time.sleep(2); st.rerun()
+                st.balloons()
+                st.success("Dati salvati e saldo calcolato!")
+                time.sleep(2)
+                st.rerun()
 
     # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
