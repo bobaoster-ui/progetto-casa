@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V14.4", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V14.5", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -19,7 +19,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola: Proprietà con à accentata
+        # Nota: Proprietà con à accentata come da istruzioni salvate
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -74,7 +74,7 @@ else:
             st.session_state.clear()
             st.rerun()
 
-    # --- RIEPILOGO GENERALE ---
+    # --- 1. RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
         try:
@@ -113,10 +113,10 @@ else:
                 df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato", "Pagato"], "Euro": [budget_iniziale, tot_conf, tot_versato]})
                 st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce"), use_container_width=True)
 
-            st.subheader("Dettaglio Articoli")
+            st.subheader("Articoli Confermati")
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
-            if st.button("📄 Report PDF"):
+            if st.button("📄 Genera Report PDF"):
                 pdf = PDF(); pdf.add_page(); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(*COLOR_AZZURRO); pdf.set_text_color(255,255,255)
                 pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True); pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True); pdf.cell(35, 10, 'Totale', 1, 0, 'C', True); pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
                 pdf.set_font('Arial', '', 9); pdf.set_text_color(0,0,0)
@@ -126,15 +126,13 @@ else:
                     pdf.multi_cell(90, 5, str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1'), 1)
                     y_e = pdf.get_y(); pdf.set_xy(x + 120, y); h = max(10, y_e - y)
                     pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R'); pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
-                st.download_button("📥 Scarica PDF", data=pdf.output(dest='S').encode('latin-1'), file_name="Report_Jacopo.pdf", mime="application/pdf")
-        else: st.warning("Nessun articolo con 'S'.")
+                st.download_button("📥 Scarica Report PDF", data=pdf.output(dest='S').encode('latin-1'), file_name="Report_Arredi.pdf", mime="application/pdf")
 
-    # --- STANZE ---
+    # --- 2. STANZE ---
     elif selezione in stanze_reali:
         st.title(f"🏠 {selezione.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=selezione, ttl=0))
 
-        # Identificazione colonne per i menu a tendina
         col_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
         col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
 
@@ -147,22 +145,30 @@ else:
             }
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
 
-            if st.form_submit_button("💾 SALVA"):
+            if st.form_submit_button("💾 SALVA MODIFICHE"):
                 for i in range(len(df_edit)):
                     try:
+                        # 1. Calcolo del totale riga
                         p, s, q = float(df_edit.iloc[i]['Prezzo Pieno']), float(df_edit.iloc[i]['Sconto %']), float(df_edit.iloc[i]['Acquistato'])
                         costo = p * (1 - (s/100)) if p > 0 else float(df_edit.iloc[i]['Costo'])
                         totale = costo * q
                         df_edit.at[df_edit.index[i], 'Costo'] = costo
                         df_edit.at[df_edit.index[i], 'Importo Totale'] = totale
-                        if str(df_edit.iloc[i][col_stato]).strip() == "Saldato":
+
+                        # 2. Logica Versato basata sullo Stato
+                        stato_val = str(df_edit.iloc[i][col_stato]).strip()
+                        if stato_val == "Saldato":
                             df_edit.at[df_edit.index[i], 'Versato'] = totale
+                        elif stato_val == "":
+                            df_edit.at[df_edit.index[i], 'Versato'] = 0.0
+                        # Se è 'Acconto', non tocchiamo il valore di Versato (resta quello inserito a mano)
+
                     except: continue
 
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Modifiche salvate con successo!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Dati sincronizzati!"); st.balloons(); time.sleep(1); st.rerun()
 
-    # --- WISHLIST ---
+    # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
