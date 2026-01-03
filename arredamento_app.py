@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V8.9", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V9.0", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_AZZURRO = (46, 117, 182)
@@ -15,11 +15,13 @@ COLOR_AZZURRO = (46, 117, 182)
 # --- FUNZIONE PULIZIA DATI ---
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
+    # Pulizia nomi colonne
     df.columns = [str(c).strip() for c in df.columns]
 
     if 'Articolo' in df.columns and 'Oggetto' not in df.columns:
         df['Oggetto'] = df['Articolo']
 
+    # Conversione numerica sicura
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
         if c in df.columns:
@@ -42,7 +44,7 @@ else:
 
     with st.sidebar:
         try: st.image("logo.png", use_container_width=True)
-        except: st.info("Carica logo.png")
+        except: st.info("Logo non trovato")
         st.markdown("---")
         can_edit_structure = st.toggle("Modifica Struttura", value=False)
         selezione = st.selectbox("Menu:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
@@ -76,20 +78,20 @@ else:
         c_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
         c_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
 
-        # EDITOR SENZA FORM
         config = {
             c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]),
             c_stato: st.column_config.SelectboxColumn(c_stato, options=["", "Acconto", "Saldato", "Ordinato", "Preventivo"])
         }
-        df_edited = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed", key=f"editor_{selezione}")
+        # Editor
+        df_edited = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
 
-        if st.button("🚀 SALVA E SINCRONIZZA", type="primary"):
-            with st.spinner("Sincronizzazione in corso..."):
+        if st.button("🚀 SALVA E PULISCI", type="primary"):
+            with st.spinner("Pulizia fantasmi e salvataggio..."):
                 final_df = df_edited.copy()
 
                 for i in range(len(final_df)):
                     try:
-                        # Calcolo prezzi
+                        # 1. Calcoli Matematici
                         p = float(final_df.iloc[i]['Prezzo Pieno'])
                         s = float(final_df.iloc[i]['Sconto %'])
                         q = float(final_df.iloc[i]['Acquistato'])
@@ -99,19 +101,23 @@ else:
                         final_df.at[final_df.index[i], 'Costo'] = costo
                         final_df.at[final_df.index[i], 'Importo Totale'] = totale
 
-                        # Forza Saldato
+                        # 2. Logica Saldato (con pulizia nan)
                         stato_val = str(final_df.iloc[i][c_stato]).strip()
                         if stato_val == "Saldato":
                             final_df.at[final_df.index[i], 'Versato'] = totale
                     except: continue
 
-                # Convertiamo tutto il DF in stringhe per Google Sheets per evitare errori di tipo
-                df_to_sheets = final_df.astype(str)
+                # --- ESORCISMO DEI NAN ---
+                # Trasformiamo tutto in stringa ma gestiamo i vuoti
+                df_final_clean = final_df.astype(object) # Manteniamo tipi misti
+                for col in df_final_clean.columns:
+                    # Se la colonna è di testo, sostituiamo nan con stringa vuota
+                    df_final_clean[col] = df_final_clean[col].apply(lambda x: "" if pd.isna(x) or str(x).lower() == 'nan' or str(x).lower() == 'none' else x)
 
-                conn.update(worksheet=selezione, data=df_to_sheets)
-                st.success("Modifiche inviate correttamente!")
+                conn.update(worksheet=selezione, data=df_final_clean)
+                st.success("Sincronizzazione riuscita! Fantasmi eliminati.")
                 st.balloons()
-                time.sleep(1.5)
+                time.sleep(1)
                 st.rerun()
 
     elif selezione == "✨ Wishlist":
