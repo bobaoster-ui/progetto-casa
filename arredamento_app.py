@@ -7,24 +7,10 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V8.7", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V8.8", layout="wide", page_icon="🏠")
 
 # Palette Colori
 COLOR_AZZURRO = (46, 117, 182)
-
-# --- CLASSE PDF ---
-class PDF(FPDF):
-    def header(self):
-        self.set_fill_color(*COLOR_AZZURRO)
-        self.rect(0, 0, 210, 40, 'F')
-        self.set_font('Arial', 'B', 16)
-        self.set_text_color(255, 255, 255)
-        self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
-        self.set_font('Arial', 'I', 10)
-        # Regola fissa: Proprietà con à accentata
-        testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
-        self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
-        self.ln(15)
 
 # --- FUNZIONE PULIZIA DATI ---
 def safe_clean_df(df):
@@ -34,8 +20,8 @@ def safe_clean_df(df):
     if 'Articolo' in df.columns and 'Oggetto' not in df.columns:
         df['Oggetto'] = df['Articolo']
 
-    # Pulizia forzata dei tipi dati
-    for c in ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']:
+    cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
+    for c in cols_num:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
     return df
@@ -64,7 +50,6 @@ else:
             st.session_state.clear()
             st.rerun()
 
-    # --- 1. RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
         all_rows = []
@@ -78,69 +63,68 @@ else:
                         df_c['Ambiente'] = s.capitalize()
                         all_rows.append(df_c)
             except: continue
-
         if all_rows:
             df_final = pd.concat(all_rows)
             tot_conf, tot_versato = df_final['Importo Totale'].sum(), df_final['Versato'].sum()
             m1, m2, m3 = st.columns(3); m1.metric("CONFERMATO", f"{tot_conf:,.2f} €"); m2.metric("PAGATO", f"{tot_versato:,.2f} €"); m3.metric("DA SALDARE", f"{(tot_conf - tot_versato):,.2f} €")
-
-            st.divider()
-            g1, g2 = st.columns(2)
-            with g1: st.plotly_chart(px.pie(df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index(), values='Importo Totale', names='Ambiente', title="Budget per Stanza", hole=0.4), use_container_width=True)
-            with g2: st.plotly_chart(px.bar(pd.DataFrame({"Stato": ["Pagato", "Residuo"], "Euro": [tot_versato, max(0, tot_conf - tot_versato)]}), x="Stato", y="Euro", color="Stato", color_discrete_map={"Pagato":"#2ECC71","Residuo":"#E74C3C"}), use_container_width=True)
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
-        else: st.warning("Nessun dato confermato trovato.")
+        else: st.warning("Dati non trovati.")
 
-    # --- 2. STANZE ---
     elif selezione in stanze_reali:
         st.title(f"🏠 {selezione.capitalize()}")
-        df = safe_clean_df(conn.read(worksheet=selezione, ttl=0))
+        # TTL=0 per leggere sempre l'ultimo dato da Sheets
+        df_base = conn.read(worksheet=selezione, ttl=0)
+        df = safe_clean_df(df_base)
 
         c_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
         c_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
 
-        with st.form(f"form_{selezione}"):
+        with st.form(key=f"form_v88_{selezione}"):
             config = {
                 c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]),
                 c_stato: st.column_config.SelectboxColumn(c_stato, options=["", "Acconto", "Saldato", "Ordinato", "Preventivo"])
             }
-            # L'editor ora restituisce i dati modificati
-            df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
+            df_edited = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
 
-            if st.form_submit_button("💾 SALVA MODIFICHE"):
-                # Creiamo un nuovo DataFrame da zero per evitare residui di memoria
-                df_updated = df_edit.copy()
+            submit = st.form_submit_button("💾 SALVA DEFINITIVO")
 
-                for i in range(len(df_updated)):
-                    # Lettura valori riga per riga
+            if submit:
+                # 1. Creiamo una copia pulita e resettiamo gli indici
+                final_df = df_edited.copy().reset_index(drop=True)
+
+                # 2. Ciclo di ricalcolo forzato
+                for i in range(len(final_df)):
                     try:
-                        p = float(df_updated.iloc[i]['Prezzo Pieno'])
-                        s = float(df_updated.iloc[i]['Sconto %'])
-                        q = float(df_updated.iloc[i]['Acquistato'])
+                        p = float(final_df.loc[i, 'Prezzo Pieno'])
+                        s = float(final_df.loc[i, 'Sconto %'])
+                        q = float(final_df.loc[i, 'Acquistato'])
 
-                        costo = p * (1 - (s/100)) if p > 0 else float(df_updated.iloc[i]['Costo'])
+                        costo = p * (1 - (s/100)) if p > 0 else float(final_df.loc[i, 'Costo'])
                         totale = costo * q
 
-                        # Aggiornamento valori numerici
-                        df_updated.at[df_updated.index[i], 'Costo'] = costo
-                        df_updated.at[df_updated.index[i], 'Importo Totale'] = totale
+                        final_df.at[i, 'Costo'] = costo
+                        final_df.at[i, 'Importo Totale'] = totale
 
-                        # Logica Saldato
-                        stato_pag = str(df_updated.iloc[i][c_stato]).strip()
-                        if stato_pag == "Saldato":
-                            df_updated.at[df_updated.index[i], 'Versato'] = totale
-                    except Exception as e:
-                        st.write(f"Nota: riga {i+1} ignorata per dati incompleti.")
+                        # LOGICA SALDATO
+                        valore_stato = str(final_df.loc[i, c_stato]).strip()
+                        if valore_stato == "Saldato":
+                            final_df.at[i, 'Versato'] = totale
+                    except:
                         continue
 
-                # Sincronizzazione finale con Google Sheets
-                conn.update(worksheet=selezione, data=df_updated)
-                st.balloons()
-                st.success("Sincronizzazione completata!")
-                time.sleep(1)
-                st.rerun()
+                # 3. TRUCCO: Convertiamo lo Stato in stringa pulita per Google
+                final_df[c_stato] = final_df[c_stato].astype(str).replace("None", "").replace("nan", "")
 
-    # --- 3. WISHLIST ---
+                # 4. INVIO
+                try:
+                    conn.update(worksheet=selezione, data=final_df)
+                    st.success(f"Dati inviati a Google Sheets per {selezione}!")
+                    st.balloons()
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Errore durante l'invio: {e}")
+
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
