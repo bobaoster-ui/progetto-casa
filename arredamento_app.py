@@ -140,10 +140,7 @@ else:
 
             # PDF GENERATION
             pdf = PDF()
-            pdf.add_page()
-            pdf.set_font("Arial", 'B', 8)
-            pdf.set_fill_color(230, 230, 230)
-
+# --- TABELLA PDF CON TESTO A CAPO ---
             pdf.cell(30, 10, 'Ambiente', 1, 0, 'C', True)
             pdf.cell(60, 10, 'Oggetto', 1, 0, 'C', True)
             pdf.cell(35, 10, 'Importo Tot.', 1, 0, 'C', True)
@@ -152,11 +149,28 @@ else:
 
             pdf.set_font("Arial", '', 8)
             for _, row in df_final.iterrows():
-                pdf.cell(30, 7, str(row['Ambiente']), 1)
-                pdf.cell(60, 7, str(row['Oggetto'])[:35].encode('latin-1', 'replace').decode('latin-1'), 1)
-                pdf.cell(35, 7, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
-                pdf.cell(35, 7, f"{row['Versato']:,.2f}", 1, 0, 'R')
-                pdf.cell(30, 7, str(row['Stato']), 1, 1, 'C')
+                # Memorizziamo la posizione Y iniziale della riga
+                y_inizio = pdf.get_y()
+                x_inizio = pdf.get_x()
+
+                # 1. Scriviamo l'Oggetto con MultiCell (che può andare a capo)
+                # Spostiamoci alla X della seconda colonna (30)
+                pdf.set_xy(x_inizio + 30, y_inizio)
+                pdf.multi_cell(60, 5, str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1'), 1)
+
+                # Calcoliamo quanto è diventata alta la cella dell'oggetto
+                y_fine = pdf.get_y()
+                altezza_riga = y_fine - y_inizio
+
+                # 2. Torniamo all'inizio della riga per disegnare le altre celle con l'altezza calcolata
+                pdf.set_xy(x_inizio, y_inizio)
+                pdf.cell(30, altezza_riga, str(row['Ambiente']), 1)
+
+                # Saltiamo la colonna oggetto (già scritta) e facciamo le altre
+                pdf.set_xy(x_inizio + 90, y_inizio)
+                pdf.cell(35, altezza_riga, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
+                pdf.cell(35, altezza_riga, f"{row['Versato']:,.2f}", 1, 0, 'R')
+                pdf.cell(30, altezza_riga, str(row['Stato']), 1, 1, 'C')
 
             pdf.ln(5)
             pdf.set_font("Arial", 'B', 9)
