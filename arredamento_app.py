@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V10.4", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V10.5", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -19,7 +19,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola: Proprietà con à
+        # Regola fissa: Proprietà con à accentata
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -63,15 +63,14 @@ else:
         st.title("🏠 Dashboard Riepilogo")
 
         try:
-            # Lettura precisa foglio Impostazioni
             df_imp = conn.read(worksheet="Impostazioni", ttl=0)
             df_imp.columns = [str(c).strip() for c in df_imp.columns]
-            # Cerchiamo il valore 15000 associato a Budget Totale
-            budget_val = df_imp.loc[df_imp['Parametro'].str.contains('Budget Totale', na=False), 'Valore'].values[0]
-            budget_iniziale = float(budget_val)
+            # Mappatura esatta dai tuoi screenshot: Parametro -> Budget Totale | Valore -> 15000
+            budget_row = df_imp[df_imp['Parametro'].astype(str).str.contains('Budget Totale', na=False)]
+            budget_iniziale = float(budget_row['Valore'].values[0])
         except Exception as e:
             budget_iniziale = 0.0
-            st.warning(f"Budget non trovato nel foglio Impostazioni. (Errore: {e})")
+            st.warning(f"Controlla foglio Impostazioni: 'Budget Totale' non trovato.")
 
         all_rows = []
         for s in stanze_reali:
@@ -98,8 +97,7 @@ else:
             st.divider()
             g1, g2 = st.columns(2)
             with g1:
-                st.plotly_chart(px.pie(df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index(),
-                                     values='Importo Totale', names='Ambiente', title="Spesa per Stanza", hole=0.4), use_container_width=True)
+                st.plotly_chart(px.pie(df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index(), values='Importo Totale', names='Ambiente', title="Spesa per Stanza", hole=0.4), use_container_width=True)
             with g2:
                 df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato"], "Euro": [budget_iniziale, tot_conf]})
                 st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce"), use_container_width=True)
@@ -117,9 +115,9 @@ else:
                     y_e = pdf.get_y(); pdf.set_xy(x_s + 120, y_s); h = max(10, y_e - y_s)
                     pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R'); pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
 
-                # FIX ERRORE PDF (punto 1)
-                pdf_output = pdf.output(dest='S').encode('latin-1')
-                st.download_button("📥 Scarica Report PDF", data=pdf_output, file_name="Report_Jacopo.pdf", mime="application/pdf")
+                # FIX DEFINITIVO PER SCARICAMENTO PDF
+                pdf_data = pdf.output(dest='S').encode('latin-1')
+                st.download_button("📥 Scarica Report PDF", data=pdf_data, file_name="Report_Jacopo.pdf", mime="application/pdf")
         else: st.warning("Nessun dato confermato.")
 
     # --- 2. STANZE ---
@@ -149,22 +147,20 @@ else:
                         if stato_val == "Saldato": df_edit.at[df_edit.index[i], 'Versato'] = totale
                         elif stato_val in ["", "None", "nan", "Preventivo"]: df_edit.at[df_edit.index[i], 'Versato'] = 0.0
 
-                        # Fix Link Fattura (punto 4)
+                        # PULIZIA LINK CONTRO ERRORE 104807
                         if "Link" in df_edit.columns:
                             l = str(df_edit.iloc[i]["Link"]).strip()
                             df_edit.at[df_edit.index[i], "Link"] = l if l.lower() not in ["nan", "none", ""] else ""
                     except: continue
 
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Dati salvati!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Dati sincronizzati!"); st.balloons(); time.sleep(1); st.rerun()
 
     # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
-        # Ripristino Foto e Link (punto 2)
         w_config = {"Foto": st.column_config.ImageColumn("Anteprima"), "Link": st.column_config.LinkColumn("Link Prodotto")}
-        # Modifica struttura dinamica (punto 3)
         df_ed_w = st.data_editor(df_w, use_container_width=True, hide_index=True, column_config=w_config, num_rows="dynamic" if can_edit_structure else "fixed")
         if st.button("Salva Wishlist"):
             conn.update(worksheet="desideri", data=df_ed_w); st.balloons(); st.rerun()
