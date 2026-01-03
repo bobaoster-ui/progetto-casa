@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V7.8", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V7.9", layout="wide", page_icon="🏠")
 
 # Colori
 COLOR_AZZURRO = (46, 117, 182)
@@ -21,21 +21,20 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola fissa: Proprietà con à accentata
+        # Regola: Proprietà con à accentata
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
 
-# --- FUNZIONE PULIZIA DATI CON AGGANCIO COLONNE DINAMICO ---
+# --- FUNZIONE PULIZIA DATI ---
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
 
-    # MAPPATURA INTELLIGENTE: Se non trova "Oggetto", cerca "Articolo"
+    # Mappatura Articolo -> Oggetto
     if 'Oggetto' not in df.columns and 'Articolo' in df.columns:
         df['Oggetto'] = df['Articolo']
 
-    # Colonne obbligatorie per evitare crash
     target_cols = {
         'Oggetto': 'Descrizione mancante',
         'Importo Totale': 0.0,
@@ -99,7 +98,6 @@ else:
             m2.metric("PAGATO", f"{tot_versato:,.2f} €")
             m3.metric("DA SALDARE", f"{(tot_conf - tot_versato):,.2f} €")
 
-            # REINSERIMENTO GRAFICI
             st.divider()
             g1, g2 = st.columns(2)
             with g1:
@@ -160,7 +158,11 @@ else:
                             df_edit.at[i, 'Versato'] = df_edit.at[i, 'Importo Totale']
                     except: continue
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Salvato!"); time.sleep(1); st.rerun()
+                # --- IL RITORNO DEI PALLONCINI ---
+                st.balloons()
+                st.success("Dati salvati con successo!")
+                time.sleep(2)
+                st.rerun()
 
     # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
@@ -169,4 +171,5 @@ else:
         df_ed_w = st.data_editor(df_w, use_container_width=True, hide_index=True)
         if st.button("Salva Wishlist"):
             conn.update(worksheet="desideri", data=df_ed_w)
+            st.balloons()
             st.rerun()
