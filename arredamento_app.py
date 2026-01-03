@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V14.7", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V14.8", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -117,6 +117,8 @@ else:
                 try:
                     pdf = PDF()
                     pdf.add_page()
+
+                    # Intestazioni tabella
                     pdf.set_font('Arial', 'B', 10)
                     pdf.set_fill_color(*COLOR_AZZURRO)
                     pdf.set_text_color(255, 255, 255)
@@ -125,16 +127,27 @@ else:
                     pdf.cell(35, 10, 'Totale', 1, 0, 'C', True)
                     pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
 
-                    pdf.set_font('Arial', '', 9); pdf.set_text_color(0, 0, 0)
-                    for _, row in df_final.iterrows():
-                        x, y = pdf.get_x(), pdf.get_y()
-                        pdf.cell(30, 10, str(row['Ambiente']), 1)
-                        pdf.multi_cell(90, 5, str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1'), 1)
-                        y_e = pdf.get_y(); pdf.set_xy(x + 120, y); h = max(10, y_e - y)
-                        pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
-                        pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
+                    pdf.set_font('Arial', '', 9)
+                    pdf.set_text_color(0, 0, 0)
 
-                    # FIX: Rimosso .encode('latin-1') perché dest='S' su bytearray fallisce se ri-encodato
+                    for _, row in df_final.iterrows():
+                        testo_articolo = str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1')
+
+                        # Calcolo altezza dinamica per pareggiare le celle
+                        # 90 è la larghezza della colonna articolo, 5 è l'altezza della riga di testo
+                        nb_lines = len(pdf.multi_cell(90, 5, testo_articolo, split_only=True))
+                        h_riga = max(10, nb_lines * 5)
+
+                        # Disegno della riga con celle tutte alte h_riga
+                        x, y = pdf.get_x(), pdf.get_y()
+                        pdf.cell(30, h_riga, str(row['Ambiente']), 1)
+                        pdf.multi_cell(90, 5, testo_articolo, 1)
+
+                        # Riposizionamento per le colonne numeriche dopo il multi_cell
+                        pdf.set_xy(x + 120, y)
+                        pdf.cell(35, h_riga, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
+                        pdf.cell(35, h_riga, f"{row['Versato']:,.2f}", 1, 1, 'R')
+
                     pdf_bytes = pdf.output(dest='S')
                     st.download_button("📥 Scarica Report PDF", data=bytes(pdf_bytes), file_name="Report_Arredi.pdf", mime="application/pdf")
                 except Exception as e:
@@ -166,12 +179,10 @@ else:
                         df_edit.at[df_edit.index[i], 'Importo Totale'] = totale
 
                         stato_val = str(df_edit.iloc[i][col_stato]).strip()
-                        # LOGICA RICHIESTA: Se stato è vuoto, azzera sempre il versato
                         if stato_val == "" or stato_val.lower() == "none":
                             df_edit.at[df_edit.index[i], 'Versato'] = 0.0
                         elif stato_val == "Saldato":
                             df_edit.at[df_edit.index[i], 'Versato'] = totale
-                        # Se è 'Acconto', mantiene il valore inserito manualmente dall'utente
                     except: continue
                 conn.update(worksheet=selezione, data=df_edit)
                 st.success("Salvataggio riuscito!"); st.balloons(); time.sleep(1); st.rerun()
