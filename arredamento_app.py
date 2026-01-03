@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V13.0", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V14.1", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -19,20 +19,33 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Nota: Proprietà con à accentata
+        # Regola: Proprietà con à
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
 
+def clean_url(url):
+    url = str(url).strip()
+    if url == "" or url.lower() in ["none", "nan", "104807", "undefined"]:
+        return ""
+    if not url.startswith(("http://", "https://")):
+        return "https://" + url
+    return url
+
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
-    # Pulizia testi per evitare errori di formato
-    for col in ['Oggetto', 'Articolo', 'Link', 'Note', 'Link Fattura', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato']:
+
+    # Pulizia testi e forzatura link
+    text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato']
+    for col in text_cols:
         if col in df.columns:
             df[col] = df[col].astype(str).replace(['None', 'nan', '104807'], '')
 
-    # Conversione numeri
+    if "Link" in df.columns:
+        df["Link"] = df["Link"].apply(clean_url)
+
+    # Numeri
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
         if c in df.columns:
@@ -65,13 +78,10 @@ else:
     # --- 1. RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
-
-        # Lettura Budget (Cella B2)
         try:
             df_imp = conn.read(worksheet="Impostazioni", ttl=0, header=None)
             budget_iniziale = float(df_imp.iloc[1, 1])
-        except:
-            budget_iniziale = 15000.0
+        except: budget_iniziale = 15000.0
 
         all_rows = []
         for s in stanze_reali:
@@ -90,24 +100,21 @@ else:
             tot_conf = df_final['Importo Totale'].sum()
             tot_versato = df_final['Versato'].sum()
 
-            # Metriche
             c1, c2, c3 = st.columns(3)
             c1.metric("BUDGET", f"{budget_iniziale:,.2f} €")
-            c2.metric("CONFERMATO", f"{tot_conf:,.2f} €", delta=f"{budget_iniziale-tot_conf:,.2f} residuo")
+            c2.metric("CONFERMATO", f"{tot_conf:,.2f} €", delta=f"{budget_iniziale-tot_conf:,.2f}")
             c3.metric("PAGATO", f"{tot_versato:,.2f} €")
 
             st.divider()
-
-            # GRAFICI - Reinseriti con logica protetta
             g1, g2 = st.columns(2)
             with g1:
                 df_pie = df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index()
                 st.plotly_chart(px.pie(df_pie, values='Importo Totale', names='Ambiente', title="Spesa per Stanza", hole=0.4), use_container_width=True)
             with g2:
                 df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato", "Pagato"], "Euro": [budget_iniziale, tot_conf, tot_versato]})
-                st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce", title="Stato Finanziario"), use_container_width=True)
+                st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce", title="Bilancio Totale"), use_container_width=True)
 
-            st.subheader("Dettaglio Oggetti Acquistati")
+            st.subheader("Articoli Confermati")
             st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
             if st.button("📄 Genera Report PDF"):
@@ -115,14 +122,13 @@ else:
                 pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True); pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True); pdf.cell(35, 10, 'Totale', 1, 0, 'C', True); pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
                 pdf.set_font('Arial', '', 9); pdf.set_text_color(0,0,0)
                 for _, row in df_final.iterrows():
-                    x_s, y_s = pdf.get_x(), pdf.get_y()
+                    x, y = pdf.get_x(), pdf.get_y()
                     pdf.cell(30, 10, str(row['Ambiente']), 1)
                     pdf.multi_cell(90, 5, str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1'), 1)
-                    y_e = pdf.get_y(); pdf.set_xy(x_s + 120, y_s); h = max(10, y_e - y_s)
+                    y_e = pdf.get_y(); pdf.set_xy(x + 120, y); h = max(10, y_e - y)
                     pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R'); pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
-                st.download_button("📥 Scarica Report PDF", data=pdf.output(dest='S').encode('latin-1'), file_name="Report_Jacopo.pdf", mime="application/pdf")
-        else:
-            st.warning("Nessun oggetto confermato (metti 'S' nella colonna S/N delle stanze).")
+                st.download_button("📥 Scarica Report", data=pdf.output(dest='S').encode('latin-1'), file_name="Report.pdf", mime="application/pdf")
+        else: st.warning("Metti 'S' nella colonna S/N per vedere i dati qui.")
 
     # --- 2. STANZE ---
     elif selezione in stanze_reali:
@@ -131,29 +137,24 @@ else:
         c_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
         c_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
 
-        st.info("💡 Per aprire i Link: passa il mouse sulla cella e clicca l'icona che appare a destra.")
-
         with st.form(f"form_{selezione}"):
             config = {
                 c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]),
                 c_stato: st.column_config.SelectboxColumn(c_stato, options=["", "Acconto", "Saldato", "Ordinato", "Preventivo"]),
-                "Link": st.column_config.LinkColumn("Link Fattura"),
+                "Link": st.column_config.LinkColumn("🔗 Link", display_text="🌐 Apri Documento"),
                 "Note": st.column_config.TextColumn("Note")
             }
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
 
-            if st.form_submit_button("💾 SALVA E AGGIORNA"):
-                # LOGICA AUTOMATICA SALDATO -> VERSATO
+            if st.form_submit_button("💾 SALVA E CALCOLA"):
                 for i in range(len(df_edit)):
                     try:
-                        # Ricalcolo costi
                         p, s, q = float(df_edit.iloc[i]['Prezzo Pieno']), float(df_edit.iloc[i]['Sconto %']), float(df_edit.iloc[i]['Acquistato'])
                         costo = p * (1 - (s/100)) if p > 0 else float(df_edit.iloc[i]['Costo'])
                         totale = costo * q
                         df_edit.at[df_edit.index[i], 'Costo'] = costo
                         df_edit.at[df_edit.index[i], 'Importo Totale'] = totale
-
-                        # Se è saldato, Versato = Totale
+                        # Automatismo Saldato
                         if str(df_edit.iloc[i][c_stato]).strip() == "Saldato":
                             df_edit.at[df_edit.index[i], 'Versato'] = totale
                     except: continue
@@ -165,7 +166,7 @@ else:
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
-        w_config = {"Foto": st.column_config.ImageColumn("Anteprima"), "Link": st.column_config.LinkColumn("Link Prodotto")}
+        w_config = {"Foto": st.column_config.ImageColumn("Anteprima"), "Link": st.column_config.LinkColumn("🔗 Vai", display_text="🌐 Vedi Prodotto")}
         df_ed_w = st.data_editor(df_w, use_container_width=True, hide_index=True, column_config=w_config, num_rows="dynamic" if can_edit_structure else "fixed")
         if st.button("Salva Wishlist"):
             conn.update(worksheet="desideri", data=df_ed_w); st.balloons(); st.rerun()
