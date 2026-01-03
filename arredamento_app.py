@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V7.9", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V8.0", layout="wide", page_icon="🏠")
 
 # Colori
 COLOR_AZZURRO = (46, 117, 182)
@@ -21,26 +21,31 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola: Proprietà con à accentata
+        # Regola fissa: Proprietà con à accentata
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
 
-# --- FUNZIONE PULIZIA DATI ---
+# --- FUNZIONE PULIZIA DATI AVANZATA ---
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Mappatura Articolo -> Oggetto
+    # 1. Mapping Articolo -> Oggetto
     if 'Oggetto' not in df.columns and 'Articolo' in df.columns:
         df['Oggetto'] = df['Articolo']
 
+    # 2. Identificazione dinamica della colonna S/N
+    col_scelta = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df.columns), 'Acquista S/N')
+    if col_scelta not in df.columns:
+        df[col_scelta] = 'N'
+
+    # 3. Colonne obbligatorie per stabilità
     target_cols = {
         'Oggetto': 'Descrizione mancante',
         'Importo Totale': 0.0,
         'Versato': 0.0,
-        'Stato Pagamento': 'Da definire',
-        'Acquista S/N': 'N'
+        'Stato Pagamento': 'Da definire'
     }
     for col, val in target_cols.items():
         if col not in df.columns:
@@ -48,7 +53,8 @@ def safe_clean_df(df):
 
     for col in ['Importo Totale', 'Versato']:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-    return df
+
+    return df, col_scelta
 
 # --- LOGIN ---
 if "password_correct" not in st.session_state:
@@ -79,10 +85,10 @@ else:
 
         for s in stanze_reali:
             try:
-                df_s = safe_clean_df(conn.read(worksheet=s, ttl=0))
+                raw_df = conn.read(worksheet=s, ttl=0)
+                df_s, col_sn = safe_clean_df(raw_df)
                 if not df_s.empty:
-                    col_scelta = next((c for c in ['Acquista S/N', 'S/N', 'Scelta'] if c in df_s.columns), 'Acquista S/N')
-                    df_c = df_s[df_s[col_scelta].astype(str).str.upper() == 'S'].copy()
+                    df_c = df_s[df_s[col_sn].astype(str).str.upper() == 'S'].copy()
                     if not df_c.empty:
                         df_c['Ambiente'] = s.capitalize()
                         all_rows.append(df_c)
@@ -141,10 +147,26 @@ else:
     # --- 2. STANZE ---
     elif selezione in stanze_reali:
         st.title(f"🏠 {selezione.capitalize()}")
-        df = safe_clean_df(conn.read(worksheet=selezione, ttl=0))
+        raw_data = conn.read(worksheet=selezione, ttl=0)
+        df, col_sn = safe_clean_df(raw_data)
+
         with st.form(f"form_{selezione}"):
-            df_edit = st.data_editor(df, use_container_width=True, hide_index=True,
+            # Configurazione colonna S/N come selectbox
+            column_config = {
+                col_sn: st.column_config.SelectboxColumn(
+                    col_sn,
+                    help="Seleziona 'S' per confermare l'acquisto",
+                    options=["S", "N"],
+                    required=True,
+                )
+            }
+
+            df_edit = st.data_editor(df,
+                                     use_container_width=True,
+                                     hide_index=True,
+                                     column_config=column_config,
                                      num_rows="dynamic" if can_edit_structure else "fixed")
+
             if st.form_submit_button("💾 SALVA"):
                 for i in range(len(df_edit)):
                     try:
@@ -158,16 +180,15 @@ else:
                             df_edit.at[i, 'Versato'] = df_edit.at[i, 'Importo Totale']
                     except: continue
                 conn.update(worksheet=selezione, data=df_edit)
-                # --- IL RITORNO DEI PALLONCINI ---
                 st.balloons()
-                st.success("Dati salvati con successo!")
+                st.success("Dati salvati e conferme aggiornate!")
                 time.sleep(2)
                 st.rerun()
 
     # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
-        df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
+        df_w, _ = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
         df_ed_w = st.data_editor(df_w, use_container_width=True, hide_index=True)
         if st.button("Salva Wishlist"):
             conn.update(worksheet="desideri", data=df_ed_w)
