@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V10.5", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V11.0", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -19,7 +19,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola fissa: Proprietà con à accentata
+        # Regola: Proprietà con à
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -49,11 +49,9 @@ else:
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
     with st.sidebar:
-        try: st.image("logo.png", use_container_width=True)
-        except: st.info("Logo non trovato")
-        st.markdown("---")
+        st.markdown("### 🏠 Menu Gestione")
         can_edit_structure = st.toggle("Modifica Struttura", value=False)
-        selezione = st.selectbox("Menu:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
+        selezione = st.selectbox("Vai a:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
         if st.button("Logout 🚪"):
             st.session_state.clear()
             st.rerun()
@@ -63,14 +61,13 @@ else:
         st.title("🏠 Dashboard Riepilogo")
 
         try:
-            df_imp = conn.read(worksheet="Impostazioni", ttl=0)
-            df_imp.columns = [str(c).strip() for c in df_imp.columns]
-            # Mappatura esatta dai tuoi screenshot: Parametro -> Budget Totale | Valore -> 15000
-            budget_row = df_imp[df_imp['Parametro'].astype(str).str.contains('Budget Totale', na=False)]
-            budget_iniziale = float(budget_row['Valore'].values[0])
+            # Lettura grezza del foglio Impostazioni per evitare errori sui nomi colonne
+            df_imp = conn.read(worksheet="Impostazioni", ttl=0, header=None)
+            # Dallo screenshot sappiamo che 15000 è nella seconda riga, seconda colonna (B2)
+            budget_iniziale = float(df_imp.iloc[1, 1])
         except Exception as e:
             budget_iniziale = 0.0
-            st.warning(f"Controlla foglio Impostazioni: 'Budget Totale' non trovato.")
+            st.error(f"Errore critico lettura Budget: {e}. Controlla che il foglio 'Impostazioni' non sia vuoto.")
 
         all_rows = []
         for s in stanze_reali:
@@ -97,7 +94,8 @@ else:
             st.divider()
             g1, g2 = st.columns(2)
             with g1:
-                st.plotly_chart(px.pie(df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index(), values='Importo Totale', names='Ambiente', title="Spesa per Stanza", hole=0.4), use_container_width=True)
+                st.plotly_chart(px.pie(df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index(),
+                                     values='Importo Totale', names='Ambiente', title="Spesa per Stanza", hole=0.4), use_container_width=True)
             with g2:
                 df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato"], "Euro": [budget_iniziale, tot_conf]})
                 st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce"), use_container_width=True)
@@ -115,10 +113,10 @@ else:
                     y_e = pdf.get_y(); pdf.set_xy(x_s + 120, y_s); h = max(10, y_e - y_s)
                     pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R'); pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
 
-                # FIX DEFINITIVO PER SCARICAMENTO PDF
-                pdf_data = pdf.output(dest='S').encode('latin-1')
-                st.download_button("📥 Scarica Report PDF", data=pdf_data, file_name="Report_Jacopo.pdf", mime="application/pdf")
-        else: st.warning("Nessun dato confermato.")
+                # FIX PDF ATTRIBUTEERROR
+                pdf_output = pdf.output(dest='S')
+                st.download_button("📥 Scarica Report PDF", data=bytes(pdf_output), file_name="Report_Jacopo.pdf", mime="application/pdf")
+        else: st.warning("Nessun dato confermato nelle stanze.")
 
     # --- 2. STANZE ---
     elif selezione in stanze_reali:
@@ -127,10 +125,11 @@ else:
         c_sn, c_stato = ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'), ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato')
 
         with st.form(f"form_{selezione}"):
+            # Usiamo LinkColumn anche qui per replicare il comportamento della Wishlist
             config = {
                 c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]),
                 c_stato: st.column_config.SelectboxColumn(c_stato, options=["", "Acconto", "Saldato", "Ordinato", "Preventivo"]),
-                "Link": st.column_config.TextColumn("Link Fattura")
+                "Link": st.column_config.LinkColumn("Link Fattura")
             }
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
 
@@ -147,14 +146,13 @@ else:
                         if stato_val == "Saldato": df_edit.at[df_edit.index[i], 'Versato'] = totale
                         elif stato_val in ["", "None", "nan", "Preventivo"]: df_edit.at[df_edit.index[i], 'Versato'] = 0.0
 
-                        # PULIZIA LINK CONTRO ERRORE 104807
                         if "Link" in df_edit.columns:
                             l = str(df_edit.iloc[i]["Link"]).strip()
                             df_edit.at[df_edit.index[i], "Link"] = l if l.lower() not in ["nan", "none", ""] else ""
                     except: continue
 
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Dati sincronizzati!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Sincronizzazione completata!"); st.balloons(); time.sleep(1); st.rerun()
 
     # --- 3. WISHLIST ---
     elif selezione == "✨ Wishlist":
