@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V14.8", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V14.9", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -24,24 +24,15 @@ class PDF(FPDF):
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
 
-def clean_url(url):
-    url = str(url).strip()
-    if url == "" or url.lower() in ["none", "nan", "104807", "undefined"]:
-        return ""
-    if not url.startswith(("http://", "https://")):
-        return "https://" + url
-    return url
-
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
     text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link']
     for col in text_cols:
         if col in df.columns:
-            df[col] = df[col].astype(str).replace(['None', 'nan', '104807'], '')
-    for col_url in ["Link", "Link Fattura"]:
-        if col_url in df.columns:
-            df[col_url] = df[col_url].apply(clean_url)
+            # Sostituiamo nan e None con stringa vuota per evitare brutte scritte nel PDF
+            df[col] = df[col].astype(str).replace(['None', 'nan', '104807', '<NA>'], '')
+
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
         if c in df.columns:
@@ -62,16 +53,9 @@ else:
     stanze_reali = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
     with st.sidebar:
-        try: st.image("logo.png", use_container_width=True)
-        except: st.info("Logo non caricato")
-        st.markdown("---")
         can_edit_structure = st.toggle("Modifica Struttura", value=False)
         selezione = st.selectbox("Menu:", ["Riepilogo Generale", "✨ Wishlist"] + stanze_reali)
-        if st.button("Logout 🚪"):
-            st.session_state.clear()
-            st.rerun()
 
-    # --- RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
         try:
@@ -93,35 +77,16 @@ else:
 
         if all_rows:
             df_final = pd.concat(all_rows)
-            tot_conf = df_final['Importo Totale'].sum()
-            tot_versato = df_final['Versato'].sum()
-
-            c1, c2, c3 = st.columns(3)
-            c1.metric("BUDGET", f"{budget_iniziale:,.2f} €")
-            c2.metric("CONFERMATO", f"{tot_conf:,.2f} €", delta=f"{budget_iniziale-tot_conf:,.2f}")
-            c3.metric("PAGATO", f"{tot_versato:,.2f} €")
-
-            st.divider()
-            g1, g2 = st.columns(2)
-            with g1:
-                df_pie = df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index()
-                st.plotly_chart(px.pie(df_pie, values='Importo Totale', names='Ambiente', title="Spesa per Stanza", hole=0.4), use_container_width=True)
-            with g2:
-                df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato", "Pagato"], "Euro": [budget_iniziale, tot_conf, tot_versato]})
-                st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce"), use_container_width=True)
-
-            st.subheader("Dettaglio Articoli")
-            st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
             if st.button("📄 Genera Report PDF"):
                 try:
                     pdf = PDF()
                     pdf.add_page()
-
-                    # Intestazioni tabella
                     pdf.set_font('Arial', 'B', 10)
                     pdf.set_fill_color(*COLOR_AZZURRO)
                     pdf.set_text_color(255, 255, 255)
+
+                    # Intestazioni
                     pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True)
                     pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True)
                     pdf.cell(35, 10, 'Totale', 1, 0, 'C', True)
@@ -131,29 +96,38 @@ else:
                     pdf.set_text_color(0, 0, 0)
 
                     for _, row in df_final.iterrows():
-                        testo_articolo = str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1')
+                        # Prepariamo i testi
+                        stanza = str(row['Ambiente'])
+                        articolo = str(row['Oggetto']).encode('latin-1', 'replace').decode('latin-1')
+                        totale = f"{row['Importo Totale']:,.2f}"
+                        versato = f"{row['Versato']:,.2f}"
 
-                        # Calcolo altezza dinamica per pareggiare le celle
-                        # 90 è la larghezza della colonna articolo, 5 è l'altezza della riga di testo
-                        nb_lines = len(pdf.multi_cell(90, 5, testo_articolo, split_only=True))
-                        h_riga = max(10, nb_lines * 5)
+                        # 1. Calcoliamo quante linee servono per l'articolo
+                        linee = pdf.multi_cell(90, 5, articolo, split_only=True)
+                        h_riga = max(10, len(linee) * 5)
 
-                        # Disegno della riga con celle tutte alte h_riga
-                        x, y = pdf.get_x(), pdf.get_y()
-                        pdf.cell(30, h_riga, str(row['Ambiente']), 1)
-                        pdf.multi_cell(90, 5, testo_articolo, 1)
+                        # 2. Otteniamo la posizione corrente
+                        curr_x = pdf.get_x()
+                        curr_y = pdf.get_y()
 
-                        # Riposizionamento per le colonne numeriche dopo il multi_cell
-                        pdf.set_xy(x + 120, y)
-                        pdf.cell(35, h_riga, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
-                        pdf.cell(35, h_riga, f"{row['Versato']:,.2f}", 1, 1, 'R')
+                        # 3. Disegniamo tutte le celle con la stessa altezza h_riga
+                        pdf.cell(30, h_riga, stanza, 1, 0, 'L')
+
+                        # multi_cell per l'articolo (bisogna resettare la X dopo)
+                        pdf.multi_cell(90, 5, articolo, 1, 'L')
+
+                        # Torniamo su per disegnare le ultime due colonne
+                        pdf.set_xy(curr_x + 120, curr_y)
+                        pdf.cell(35, h_riga, totale, 1, 0, 'R')
+                        pdf.cell(35, h_riga, versato, 1, 1, 'R')
 
                     pdf_bytes = pdf.output(dest='S')
                     st.download_button("📥 Scarica Report PDF", data=bytes(pdf_bytes), file_name="Report_Arredi.pdf", mime="application/pdf")
                 except Exception as e:
-                    st.error(f"Errore generazione PDF: {e}")
+                    st.error(f"Errore: {e}")
 
-    # --- STANZE ---
+            st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
+
     elif selezione in stanze_reali:
         st.title(f"🏠 {selezione.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=selezione, ttl=0))
@@ -185,9 +159,8 @@ else:
                             df_edit.at[df_edit.index[i], 'Versato'] = totale
                     except: continue
                 conn.update(worksheet=selezione, data=df_edit)
-                st.success("Salvataggio riuscito!"); st.balloons(); time.sleep(1); st.rerun()
+                st.success("Dati salvati!"); st.balloons(); time.sleep(1); st.rerun()
 
-    # --- WISHLIST ---
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
