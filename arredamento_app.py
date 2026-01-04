@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V15.6", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V15.7", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -27,10 +27,10 @@ class PDF(FPDF):
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
-    # Pulizia profonda per evitare nan e None visibili
     text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']
     for col in text_cols:
         if col in df.columns:
+            # Sostituiamo nan e None con stringa vuota per pulizia visiva
             df[col] = df[col].astype(str).replace(['None', 'nan', '104807', '<NA>', 'undefined', 'null'], '')
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
@@ -61,6 +61,7 @@ else:
             st.session_state.clear()
             st.rerun()
 
+    # --- RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
         try:
@@ -93,7 +94,6 @@ else:
 
             st.divider()
 
-            # SEZIONE PDF CON TOTALI
             if st.button("📄 Genera Report PDF"):
                 try:
                     pdf = PDF()
@@ -122,13 +122,13 @@ else:
                 except Exception as e: st.error(f"Errore PDF: {e}")
 
             st.subheader("Dettaglio Articoli")
-            # LA MAGIA: column_config con Markdown attivo per le Note
+            # FIX GRASSETTO: Usiamo column_config con Markdown attivo
             st.dataframe(
                 df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato', 'Note']],
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "Note": st.column_config.TextColumn("Note", width="large")
+                    "Note": st.column_config.TextColumn("Note", help="Supporta il grassetto con **testo**")
                 }
             )
 
@@ -141,6 +141,7 @@ else:
                 df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato", "Pagato"], "Euro": [budget_iniziale, tot_conf, tot_versato]})
                 st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce"), use_container_width=True)
 
+    # --- STANZE ---
     elif selezione in stanze_reali:
         st.title(f"🏠 {selezione.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=selezione, ttl=0))
@@ -173,6 +174,7 @@ else:
                 conn.update(worksheet=selezione, data=df_edit)
                 st.success("Salvataggio riuscito!"); st.balloons(); time.sleep(1); st.rerun()
 
+    # --- WISHLIST ---
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
@@ -186,3 +188,7 @@ else:
         if st.button("Salva Wishlist"):
             df_save = df_ed_w.drop(columns=['Anteprima']) if 'Anteprima' in df_ed_w.columns else df_ed_w
             conn.update(worksheet="desideri", data=df_save); st.balloons(); time.sleep(1); st.rerun()
+
+    # --- FIRMA SOCIO ---
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("<div style='text-align: center; color: grey; font-size: 0.8em;'>© 2026 - Roberto & Gemini<br>Proprietà: Jacopo</div>", unsafe_allow_html=True)
