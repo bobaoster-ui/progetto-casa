@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V15.4", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V15.5", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -60,7 +60,6 @@ else:
             st.session_state.clear()
             st.rerun()
 
-    # --- RIEPILOGO GENERALE ---
     if selezione == "Riepilogo Generale":
         st.title("🏠 Dashboard Riepilogo")
         try:
@@ -93,7 +92,7 @@ else:
 
             st.divider()
 
-            if st.button("📄 Genera Report PDF"):
+            if st.button("📄 Genera Report PDF con Totali"):
                 try:
                     pdf = PDF()
                     pdf.add_page()
@@ -111,7 +110,7 @@ else:
                         txt = art_val.encode('latin-1', 'replace').decode('latin-1')
                         linee = pdf.multi_cell(90, 5, txt, split_only=True)
                         h = max(10, len(linee) * 5)
-                        if pdf.get_y() + h > 270: pdf.add_page()
+                        if pdf.get_y() + h > 260: pdf.add_page()
                         x, y = pdf.get_x(), pdf.get_y()
                         pdf.rect(x, y, 30, h); pdf.set_xy(x, y); pdf.cell(30, h, str(row['Ambiente']), 0, 0, 'L')
                         pdf.rect(x + 30, y, 90, h); pdf.set_xy(x + 30, y); pdf.multi_cell(90, 5, txt, 0, 'L')
@@ -119,11 +118,20 @@ else:
                         pdf.rect(x + 155, y, 35, h); pdf.set_xy(x + 155, y); pdf.cell(35, h, f"{row['Versato']:,.2f}", 0, 1, 'R')
                         pdf.set_y(y + h)
 
+                    # RIGA TOTALI NEL PDF
+                    pdf.ln(2)
+                    pdf.set_font('Arial', 'B', 10)
+                    pdf.set_fill_color(230, 230, 230)
+                    pdf.cell(120, 10, 'TOTALI GENERALI', 1, 0, 'R', True)
+                    pdf.cell(35, 10, f"{tot_conf:,.2f}", 1, 0, 'R', True)
+                    pdf.cell(35, 10, f"{tot_versato:,.2f}", 1, 1, 'R', True)
+
                     st.download_button("📥 Scarica Report PDF", data=bytes(pdf.output(dest='S')), file_name="Report_Arredi.pdf", mime="application/pdf")
                 except Exception as e: st.error(f"Errore PDF: {e}")
 
             st.subheader("Dettaglio Articoli")
-            st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
+            # Qui le note supportano il Markdown se visualizzate in una tabella statica
+            st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato', 'Note']], use_container_width=True, hide_index=True)
 
             st.divider()
             g1, g2 = st.columns(2)
@@ -134,7 +142,6 @@ else:
                 df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato", "Pagato"], "Euro": [budget_iniziale, tot_conf, tot_versato]})
                 st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce"), use_container_width=True)
 
-    # --- STANZE ---
     elif selezione in stanze_reali:
         st.title(f"🏠 {selezione.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=selezione, ttl=0))
@@ -145,7 +152,9 @@ else:
             config = {
                 col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"]),
                 col_stato: st.column_config.SelectboxColumn(col_stato, options=["", "Acconto", "Saldato", "Ordinato", "Preventivo"]),
-                "Link Fattura": st.column_config.LinkColumn("📂 Fattura", display_text="🌐 Apri Documento")
+                "Link Fattura": st.column_config.LinkColumn("📂 Fattura", display_text="🌐 Apri Documento"),
+                # MODIFICA NOTE: TextColumn permette l'apertura di un editor più grande al click
+                "Note": st.column_config.TextColumn("Note (Markdown supportato)", help="Puoi usare **grassetto**, elenchi puntati con -, ecc.")
             }
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
 
@@ -166,7 +175,6 @@ else:
                 conn.update(worksheet=selezione, data=df_edit)
                 st.success("Salvataggio riuscito!"); st.balloons(); time.sleep(1); st.rerun()
 
-    # --- WISHLIST ---
     elif selezione == "✨ Wishlist":
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
@@ -174,7 +182,8 @@ else:
         w_config = {
             "Foto": st.column_config.TextColumn("🔗 Link Foto (Incolla qui)"),
             "Anteprima": st.column_config.ImageColumn("Visualizzazione"),
-            "Link": st.column_config.LinkColumn("🔗 Sito Web", display_text="Vai al sito")
+            "Link": st.column_config.LinkColumn("🔗 Sito Web", display_text="Vai al sito"),
+            "Note": st.column_config.TextColumn("Note")
         }
         df_ed_w = st.data_editor(df_w, use_container_width=True, hide_index=True, column_config=w_config, num_rows="dynamic" if can_edit_structure else "fixed")
         if st.button("Salva Wishlist"):
