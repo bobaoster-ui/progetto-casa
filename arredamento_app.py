@@ -7,7 +7,7 @@ from fpdf import FPDF
 import time
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V15.5", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V15.6", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -19,7 +19,7 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola: Proprietà con à accentata
+        # Regola memorizzata: Proprietà con à accentata
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -27,10 +27,11 @@ class PDF(FPDF):
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
+    # Pulizia profonda per evitare nan e None visibili
     text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']
     for col in text_cols:
         if col in df.columns:
-            df[col] = df[col].astype(str).replace(['None', 'nan', '104807', '<NA>', 'undefined'], '')
+            df[col] = df[col].astype(str).replace(['None', 'nan', '104807', '<NA>', 'undefined', 'null'], '')
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
         if c in df.columns:
@@ -92,21 +93,17 @@ else:
 
             st.divider()
 
-            if st.button("📄 Genera Report PDF con Totali"):
+            # SEZIONE PDF CON TOTALI
+            if st.button("📄 Genera Report PDF"):
                 try:
                     pdf = PDF()
                     pdf.add_page()
-                    pdf.set_font('Arial', 'B', 10)
-                    pdf.set_fill_color(*COLOR_AZZURRO)
-                    pdf.set_text_color(255, 255, 255)
-                    pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True)
-                    pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True)
-                    pdf.cell(35, 10, 'Totale', 1, 0, 'C', True)
-                    pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
-
+                    pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(*COLOR_AZZURRO); pdf.set_text_color(255, 255, 255)
+                    pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True); pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True)
+                    pdf.cell(35, 10, 'Totale', 1, 0, 'C', True); pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
                     pdf.set_font('Arial', '', 9); pdf.set_text_color(0, 0, 0)
                     for _, row in df_final.iterrows():
-                        art_val = str(row['Oggetto']).replace('nan', '').strip()
+                        art_val = str(row['Oggetto']).replace('nan', '').replace('None', '').strip()
                         txt = art_val.encode('latin-1', 'replace').decode('latin-1')
                         linee = pdf.multi_cell(90, 5, txt, split_only=True)
                         h = max(10, len(linee) * 5)
@@ -117,21 +114,23 @@ else:
                         pdf.rect(x + 120, y, 35, h); pdf.set_xy(x + 120, y); pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 0, 0, 'R')
                         pdf.rect(x + 155, y, 35, h); pdf.set_xy(x + 155, y); pdf.cell(35, h, f"{row['Versato']:,.2f}", 0, 1, 'R')
                         pdf.set_y(y + h)
-
-                    # RIGA TOTALI NEL PDF
-                    pdf.ln(2)
-                    pdf.set_font('Arial', 'B', 10)
-                    pdf.set_fill_color(230, 230, 230)
+                    pdf.ln(2); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(230, 230, 230)
                     pdf.cell(120, 10, 'TOTALI GENERALI', 1, 0, 'R', True)
                     pdf.cell(35, 10, f"{tot_conf:,.2f}", 1, 0, 'R', True)
                     pdf.cell(35, 10, f"{tot_versato:,.2f}", 1, 1, 'R', True)
-
                     st.download_button("📥 Scarica Report PDF", data=bytes(pdf.output(dest='S')), file_name="Report_Arredi.pdf", mime="application/pdf")
                 except Exception as e: st.error(f"Errore PDF: {e}")
 
             st.subheader("Dettaglio Articoli")
-            # Qui le note supportano il Markdown se visualizzate in una tabella statica
-            st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato', 'Note']], use_container_width=True, hide_index=True)
+            # LA MAGIA: column_config con Markdown attivo per le Note
+            st.dataframe(
+                df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato', 'Note']],
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Note": st.column_config.TextColumn("Note", width="large")
+                }
+            )
 
             st.divider()
             g1, g2 = st.columns(2)
@@ -153,8 +152,7 @@ else:
                 col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"]),
                 col_stato: st.column_config.SelectboxColumn(col_stato, options=["", "Acconto", "Saldato", "Ordinato", "Preventivo"]),
                 "Link Fattura": st.column_config.LinkColumn("📂 Fattura", display_text="🌐 Apri Documento"),
-                # MODIFICA NOTE: TextColumn permette l'apertura di un editor più grande al click
-                "Note": st.column_config.TextColumn("Note (Markdown supportato)", help="Puoi usare **grassetto**, elenchi puntati con -, ecc.")
+                "Note": st.column_config.TextColumn("Note")
             }
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
 
@@ -180,10 +178,9 @@ else:
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
         if 'Foto' in df_w.columns: df_w['Anteprima'] = df_w['Foto']
         w_config = {
-            "Foto": st.column_config.TextColumn("🔗 Link Foto (Incolla qui)"),
+            "Foto": st.column_config.TextColumn("🔗 Link Foto"),
             "Anteprima": st.column_config.ImageColumn("Visualizzazione"),
-            "Link": st.column_config.LinkColumn("🔗 Sito Web", display_text="Vai al sito"),
-            "Note": st.column_config.TextColumn("Note")
+            "Link": st.column_config.LinkColumn("🔗 Sito Web", display_text="Vai al sito")
         }
         df_ed_w = st.data_editor(df_w, use_container_width=True, hide_index=True, column_config=w_config, num_rows="dynamic" if can_edit_structure else "fixed")
         if st.button("Salva Wishlist"):
