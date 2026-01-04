@@ -2,30 +2,26 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+from datetime import datetime, timedelta
 from fpdf import FPDF
 import time
 
-# --- 1. IL SIGILLO DI SICUREZZA ---
+# --- 1. IL SIGILLO DI SICUREZZA (BLINDATO) ---
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA")
     st.stop()
 
-# --- 2. CONFIGURAZIONE PAGINA & TEMA (BLINDATO) ---
+# --- 2. CONFIGURAZIONE PAGINA & TEMA (STRUTTURA 18.1) ---
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = False
 
-st.set_page_config(page_title="Monitoraggio Arredamento V18.1", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V18.6", layout="wide", page_icon="🚀")
 
 if st.session_state.dark_mode:
-    bg_color = "#0e1117"
-    card_color = "#1d2129"
-    text_color = "#ffffff"
+    bg_color, card_color, text_color = "#0e1117", "#1d2129", "#ffffff"
     header_grad = "linear-gradient(90deg, #0f2027, #203a43, #2c5364)"
 else:
-    bg_color = "#f8f9fc"
-    card_color = "#ffffff"
-    text_color = "#1f2937"
+    bg_color, card_color, text_color = "#f8f9fc", "#ffffff", "#1f2937"
     header_grad = "linear-gradient(90deg, #2e5a88, #4a90e2)"
 
 st.markdown(f"""
@@ -46,9 +42,10 @@ st.markdown(f"""
         background-color: {card_color}; padding: 15px; border-left: 5px solid #f39c12;
         border-radius: 8px; margin-top: 10px; font-size: 0.95em;
     }}
-    .footer-signature {{
-        position: fixed; left: 20px; bottom: 20px; opacity: 0.6;
-        font-family: 'Courier New', Courier, monospace; font-size: 0.8em;
+    .alert-box {{
+        background-color: #fff3cd; color: #856404; padding: 12px;
+        border-radius: 8px; border-left: 6px solid #f39c12; margin-bottom: 15px;
+        font-weight: 600; font-size: 0.9em;
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -71,13 +68,17 @@ class PDF(FPDF):
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
+
+    # Identificazione descrizione
     if 'Articolo' in df.columns: df['Descrizione_Visualizzata'] = df['Articolo']
     elif 'Oggetto' in df.columns: df['Descrizione_Visualizzata'] = df['Oggetto']
-    else: df['Descrizione_Visualizzata'] = ""
-    text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']
+    else: df['Descrizione_Visualizzata'] = "N/D"
+
+    text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto', 'Data Scadenza']
     for col in text_cols:
         if col in df.columns:
             df[col] = df[col].astype(str).replace(['None', 'nan', '<NA>', 'undefined', 'null'], '')
+
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
         if c in df.columns:
@@ -110,10 +111,11 @@ else:
         st.markdown("<br><br><br>", unsafe_allow_html=True)
         st.markdown("---")
         st.markdown("✨ **Roberto & Gemini**")
+        st.markdown("<small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
 
         if st.button("Logout 🚪"): st.session_state.clear(); st.rerun()
 
-    # --- RIEPILOGO GENERALE + ANALISI PREDITTIVA (BLINDATI) ---
+    # --- RIEPILOGO GENERALE + ALERT SCADENZARIO ---
     if "Riepilogo" in selezione:
         st.markdown(f'<div class="main-header"><h1 style="color:white; margin:0;">Command Center Arredamento</h1><p style="margin:0; opacity:0.8;">Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
 
@@ -124,18 +126,43 @@ else:
 
         all_rows = []
         potential_cost = 0
+        alert_scadenze = []
 
         for s in stanze_reali:
             try:
                 df_s = safe_clean_df(conn.read(worksheet=s, ttl="1m"))
                 if not df_s.empty:
                     c_sn = 'Acquista S/N' if 'Acquista S/N' in df_s.columns else 'S/N'
+                    col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df_s.columns else 'Stato'
+
+                    # Raccolta dati budget
                     df_c = df_s[df_s[c_sn].str.upper().str.strip() == 'S'].copy()
                     df_c['Ambiente'] = s.capitalize()
                     all_rows.append(df_c)
+
                     df_n = df_s[df_s[c_sn].str.upper().str.strip() != 'S']
                     potential_cost += df_n['Importo Totale'].sum()
+
+                    # LOGICA CHIRURGICA SCADENZARIO
+                    if 'Data Scadenza' in df_s.columns:
+                        for _, row in df_s.iterrows():
+                            # Se c'è una data e il pagamento non è saldato
+                            if row['Data Scadenza'] and str(row.get(col_stato, "")).strip() != "Saldato":
+                                try:
+                                    # Pulizia stringa data e conversione
+                                    d_str = str(row['Data Scadenza']).split(' ')[0]
+                                    d_scad = pd.to_datetime(d_str, dayfirst=True)
+                                    oggi = datetime.now()
+                                    # Se scade entro i prossimi 7 giorni
+                                    if d_scad <= oggi + timedelta(days=7):
+                                        alert_scadenze.append(f"⏰ {s.capitalize()}: {row['Descrizione_Visualizzata']} in scadenza il {d_scad.strftime('%d/%m/%Y')}")
+                                except: continue
             except: continue
+
+        # Visualizzazione Alert
+        if alert_scadenze:
+            for msg in alert_scadenze:
+                st.markdown(f'<div class="alert-box">{msg}</div>', unsafe_allow_html=True)
 
         if all_rows:
             df_final = pd.concat(all_rows)
@@ -182,25 +209,36 @@ else:
                         pdf.set_xy(10, start_y); pdf.cell(30, h, str(row['Ambiente']), 1)
                         pdf.set_xy(130, start_y); pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
                         pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
+
+                    # TOTALI IN CALCE AL PDF
+                    pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(240, 240, 240)
+                    pdf.cell(120, 10, 'TOTALI GENERALI', 1, 0, 'R', True)
+                    pdf.cell(35, 10, f"{tot_conf:,.2f}", 1, 0, 'R', True)
+                    pdf.cell(35, 10, f"{tot_versato:,.2f}", 1, 1, 'R', True)
+
                     st.download_button("📥 Scarica PDF", data=bytes(pdf.output(dest='S')), file_name="Report.pdf")
             with col_sx:
                 st.dataframe(df_final[['Ambiente', 'Descrizione_Visualizzata', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
-    # --- STANZE & WISHLIST (BLINDATI) ---
+    # --- STANZE & WISHLIST ---
     elif "📦" in selezione:
         stanza_nome = selezione.replace("📦 ", "").lower()
         st.title(f"🏠 {stanza_nome.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=stanza_nome, ttl="1m"))
         col_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
         col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
+
         with st.form(f"f_{stanza_nome}"):
             c_config = {
                 col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"]),
                 col_stato: st.column_config.SelectboxColumn(col_stato, options=["", "Acconto", "Saldato", "Preventivo"]),
                 "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri"),
+                "Data Scadenza": st.column_config.DateColumn("📅 Scadenza", format="DD/MM/YYYY"),
                 "Note": st.column_config.TextColumn("Note", width="large")
             }
+            # Rimuoviamo dalla vista la colonna tecnica di descrizione
             df_edit = st.data_editor(df.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=c_config, num_rows="dynamic" if can_edit_structure else "fixed")
+
             if st.form_submit_button("💾 SALVA"):
                 for i in range(len(df_edit)):
                     try:
@@ -212,7 +250,7 @@ else:
                             df_edit.at[df_edit.index[i], 'Versato'] = costo * q
                     except: continue
                 conn.update(worksheet=stanza_nome, data=df_edit)
-                st.cache_data.clear(); st.balloons(); st.success("Salvato!"); time.sleep(1); st.rerun()
+                st.cache_data.clear(); st.balloons(); time.sleep(1); st.rerun()
 
     elif "✨" in selezione:
         st.title("✨ Wishlist")
