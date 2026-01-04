@@ -14,7 +14,7 @@ if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.stop()
 
 # --- 2. CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="Monitoraggio Arredamento V16.1", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V16.2", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -35,9 +35,14 @@ def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Fix Bug Colonne: Allineiamo "Articolo" su "Oggetto" se necessario
-    if 'Articolo' in df.columns and ('Oggetto' not in df.columns or df['Oggetto'].replace(['None', 'nan', ''], pd.NA).dropna().empty):
-        df['Oggetto'] = df['Articolo']
+    # --- FIX DEFINITIVO COLONNA DESCRIZIONE ---
+    # Se esiste la colonna 'Articolo', la usiamo come descrizione principale per il Riepilogo
+    if 'Articolo' in df.columns:
+        df['Descrizione_Visualizzata'] = df['Articolo']
+    elif 'Oggetto' in df.columns:
+        df['Descrizione_Visualizzata'] = df['Oggetto']
+    else:
+        df['Descrizione_Visualizzata'] = ""
 
     text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']
     for col in text_cols:
@@ -120,7 +125,6 @@ else:
 
             st.divider()
 
-            # SEZIONE PDF E TABELLA
             col_dx, col_sx = st.columns([1, 2])
             with col_dx:
                 if st.button("📄 Genera Report PDF"):
@@ -132,8 +136,7 @@ else:
                         pdf.cell(35, 10, 'Totale', 1, 0, 'C', True); pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
                         pdf.set_font('Arial', '', 9); pdf.set_text_color(0, 0, 0)
                         for _, row in df_final.iterrows():
-                            # Fix PDF: usa Oggetto (che ora contiene anche Articolo)
-                            art_val = str(row['Oggetto']).strip()
+                            art_val = str(row['Descrizione_Visualizzata']).strip()
                             txt = art_val.encode('latin-1', 'replace').decode('latin-1')
                             linee = pdf.multi_cell(90, 5, txt, split_only=True)
                             h = max(10, len(linee) * 5)
@@ -153,7 +156,10 @@ else:
 
             with col_sx:
                 st.subheader("Dettaglio Confermati")
-                st.dataframe(df_final[['Ambiente', 'Oggetto', 'Importo Totale', 'Versato', 'Note']], use_container_width=True, hide_index=True)
+                # Visualizziamo la descrizione corretta rinominandola al volo per l'utente
+                df_view = df_final[['Ambiente', 'Descrizione_Visualizzata', 'Importo Totale', 'Versato', 'Note']].copy()
+                df_view.rename(columns={'Descrizione_Visualizzata': 'Articolo'}, inplace=True)
+                st.dataframe(df_view, use_container_width=True, hide_index=True)
 
             st.divider()
             g1, g2 = st.columns(2)
@@ -164,7 +170,7 @@ else:
                 df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato", "Pagato"], "Euro": [budget_iniziale, tot_conf, tot_versato]})
                 st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce", title="Confronto Economico"), use_container_width=True)
 
-    # --- STANZE E WISHLIST --- (Invariati)
+    # --- STANZE E WISHLIST ---
     elif "📦" in selezione:
         stanza_nome = selezione.replace("📦 ", "").lower()
         st.title(f"🏠 {stanza_nome.capitalize()}")
@@ -178,7 +184,7 @@ else:
                 "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri"),
                 "Note": st.column_config.TextColumn("Note", width="large")
             }
-            df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
+            df_edit = st.data_editor(df.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
             if st.form_submit_button("💾 SALVA MODIFICHE"):
                 with st.spinner("Salvataggio..."):
                     for i in range(len(df_edit)):
@@ -200,7 +206,7 @@ else:
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
         if 'Foto' in df_w.columns: df_w['Anteprima'] = df_w['Foto']
         w_config = {"Foto": st.column_config.TextColumn("🔗 Link Foto"), "Anteprima": st.column_config.ImageColumn("Visualizzazione"), "Link": st.column_config.LinkColumn("🛒 Negozio", display_text="Vai")}
-        df_ed_w = st.data_editor(df_w, use_container_width=True, hide_index=True, column_config=w_config, num_rows="dynamic" if can_edit_structure else "fixed")
+        df_ed_w = st.data_editor(df_w.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=w_config, num_rows="dynamic" if can_edit_structure else "fixed")
         if st.button("Salva Preferiti"):
             df_save = df_ed_w.drop(columns=['Anteprima']) if 'Anteprima' in df_ed_w.columns else df_ed_w
             conn.update(worksheet="desideri", data=df_save); st.balloons(); time.sleep(1); st.rerun()
