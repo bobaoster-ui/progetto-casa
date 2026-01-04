@@ -12,7 +12,7 @@ if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.stop()
 
 # --- 2. CONFIGURAZIONE PAGINA & CSS ---
-st.set_page_config(page_title="Monitoraggio Arredamento V17.5", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V17.6", layout="wide", page_icon="🏠")
 
 st.markdown("""
     <style>
@@ -32,6 +32,7 @@ st.markdown("""
 
 COLOR_AZZURRO = (46, 117, 182)
 
+# --- 3. CLASSE PDF (LOGICA SIGILLATA) ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(*COLOR_AZZURRO)
@@ -39,6 +40,7 @@ class PDF(FPDF):
         self.set_font('Arial', 'B', 16); self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
+        # Regola memorizzata: Proprietà con à accentata
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -59,7 +61,7 @@ def safe_clean_df(df):
             df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
     return df
 
-# --- 3. LOGICA DI ACCESSO ---
+# --- 4. ACCESSO E CONNESSIONE ---
 if "password_correct" not in st.session_state:
     st.title("🔒 Accesso Riservato")
     u = st.text_input("Utente"); p = st.text_input("Password", type="password")
@@ -79,6 +81,7 @@ else:
         can_edit_structure = st.toggle("⚙️ Modifica Struttura", value=False)
         if st.button("Logout 🚪"): st.session_state.clear(); st.rerun()
 
+    # --- RIEPILOGO GENERALE ---
     if "Riepilogo" in selezione:
         st.markdown(f'<div class="main-header"><h1 style="color:white; margin:0;">Gestione Spese Arredamento</h1><p style="margin:0; opacity:0.8;">Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
         try:
@@ -134,7 +137,6 @@ else:
                         pdf.set_xy(130, start_y); pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
                         pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
 
-                    # RIGA TOTALI PDF
                     pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(230, 230, 230)
                     pdf.cell(120, 10, 'TOTALI GENERALI', 1, 0, 'R', True)
                     pdf.cell(35, 10, f"{tot_conf:,.2f}", 1, 0, 'R', True)
@@ -144,12 +146,14 @@ else:
             with col_sx:
                 st.dataframe(df_final[['Ambiente', 'Descrizione_Visualizzata', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
+    # --- STANZE ---
     elif "📦" in selezione:
         stanza_nome = selezione.replace("📦 ", "").lower()
         st.title(f"🏠 {stanza_nome.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=stanza_nome, ttl="1m"))
         col_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
         col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
+
         with st.form(f"f_{stanza_nome}"):
             c_config = {
                 col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"]),
@@ -157,8 +161,10 @@ else:
                 "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri"),
                 "Note": st.column_config.TextColumn("Note", width="large")
             }
-            df_edit = st.data_editor(df.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=c_config, num_rows="dynamic" if can_edit_structure else "fixed")
-            if st.form_submit_button("💾 SALVA"):
+            placeholder = st.empty() # Per evitare ghosting
+            df_edit = placeholder.data_editor(df.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=c_config, num_rows="dynamic" if can_edit_structure else "fixed")
+
+            if st.form_submit_button("💾 SALVA MODIFICHE"):
                 for i in range(len(df_edit)):
                     try:
                         p, s, q = float(df_edit.iloc[i]['Prezzo Pieno']), float(df_edit.iloc[i]['Sconto %']), float(df_edit.iloc[i]['Acquistato'])
@@ -170,11 +176,16 @@ else:
                             df_edit.at[df_edit.index[i], 'Versato'] = totale_riga
                     except: continue
                 conn.update(worksheet=stanza_nome, data=df_edit)
-                st.cache_data.clear(); st.success("Dati aggiornati!"); time.sleep(1); st.rerun()
+                st.cache_data.clear()
+                st.balloons() # I palloncini sono tornati!
+                st.success("Dati aggiornati con successo!")
+                time.sleep(1.5)
+                st.rerun()
 
     elif "✨" in selezione:
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl="1m"))
         df_ed_w = st.data_editor(df_w.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True)
         if st.button("Salva Wishlist"):
-            conn.update(worksheet="desideri", data=df_ed_w); st.cache_data.clear(); st.rerun()
+            conn.update(worksheet="desideri", data=df_ed_w)
+            st.cache_data.clear(); st.balloons(); st.rerun()
