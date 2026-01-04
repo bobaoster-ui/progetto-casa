@@ -6,17 +6,18 @@ from datetime import datetime, timedelta
 from fpdf import FPDF
 import time
 
-# --- 1. IL SIGILLO DI SICUREZZA (BLINDATO) ---
+# --- 1. IL SIGILLO DI SICUREZZA ---
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA")
     st.stop()
 
-# --- 2. CONFIGURAZIONE PAGINA & TEMA (BLINDATO) ---
+# --- 2. CONFIGURAZIONE PAGINA & TEMA ---
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = False
 
-st.set_page_config(page_title="Monitoraggio Arredamento V18.2", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V18.3", layout="wide", page_icon="🚀")
 
+# Stili CSS per il tema
 if st.session_state.dark_mode:
     bg_color, card_color, text_color = "#0e1117", "#1d2129", "#ffffff"
     header_grad = "linear-gradient(90deg, #0f2027, #203a43, #2c5364)"
@@ -35,28 +36,27 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-COLOR_AZZURRO = (46, 117, 182)
-
-# --- 3. BLOCCO PDF BLINDATO ---
+# --- 3. BLOCCHI BLINDATI (PDF & PULIZIA DATI) ---
 class PDF(FPDF):
     def header(self):
-        self.set_fill_color(*COLOR_AZZURRO); self.rect(0, 0, 210, 40, 'F')
+        self.set_fill_color(46, 117, 182); self.rect(0, 0, 210, 40, 'F')
         self.set_font('Arial', 'B', 16); self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola memorizzata: Proprietà con à accentata
+        # Regola memorizzata: Proprietà con à
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C'); self.ln(15)
 
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
-    # Logica blindata per descrizione (gestisce sparizione colonna Oggetto)
+
+    # Gestione dinamica sparizione colonna "Oggetto"
     if 'Articolo' in df.columns: df['Descrizione_Visualizzata'] = df['Articolo']
     elif 'Oggetto' in df.columns: df['Descrizione_Visualizzata'] = df['Oggetto']
     else: df['Descrizione_Visualizzata'] = "N/D"
 
-    text_cols = ['Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Link Fattura', 'Data Scadenza']
+    text_cols = ['Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Link Fattura', 'Data Scadenza', 'Link', 'Foto']
     for col in text_cols:
         if col in df.columns:
             df[col] = df[col].astype(str).replace(['None', 'nan', '<NA>', 'undefined', 'null'], '')
@@ -86,34 +86,34 @@ else:
         selezione = st.selectbox("MENU NAVIGAZIONE", ["🏠 Riepilogo Generale", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze_reali])
         st.markdown("---")
         can_edit_structure = st.toggle("⚙️ Modifica Struttura", value=False)
-        st.markdown("<br><br>---<br>✨ **Roberto & Gemini**", unsafe_allow_html=True)
+
+        # FIRMA BLINDATA
+        st.markdown("<br><br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
         if st.button("Logout 🚪"): st.session_state.clear(); st.rerun()
 
-    # --- RIEPILOGO GENERALE + ANALISI + SCADENZARIO ---
+    # --- RIEPILOGO GENERALE ---
     if "Riepilogo" in selezione:
         st.markdown(f'<div class="main-header"><h1 style="color:white; margin:0;">Command Center Arredamento</h1><p style="margin:0; opacity:0.8;">Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
 
         all_rows = []; potential_cost = 0; scadenze_imminenti = []
         try:
-            df_imp = conn.read(worksheet="Impostazioni", ttl="5m")
+            df_imp = conn.read(worksheet="Impostazioni", ttl=0) # TTL 0 per forzare caricamento fresco
             budget_totale = pd.to_numeric(df_imp.iloc[0, 1], errors='coerce')
         except: budget_totale = 15000.0
 
         for s in stanze_reali:
             try:
-                df_s = safe_clean_df(conn.read(worksheet=s, ttl="1m"))
+                df_s = safe_clean_df(conn.read(worksheet=s, ttl=0))
                 if not df_s.empty:
                     c_sn = 'Acquista S/N' if 'Acquista S/N' in df_s.columns else 'S/N'
-                    # Raccolta dati per budget
                     df_c = df_s[df_s[c_sn].str.upper().str.strip() == 'S'].copy()
                     df_c['Ambiente'] = s.capitalize()
                     all_rows.append(df_c)
                     potential_cost += df_s[df_s[c_sn].str.upper().str.strip() != 'S']['Importo Totale'].sum()
 
-                    # LOGICA SCADENZARIO (Alert)
                     if 'Data Scadenza' in df_s.columns:
                         for _, r in df_s.iterrows():
-                            if r['Data Scadenza'] and r['Stato Pagamento'] != 'Saldato':
+                            if r['Data Scadenza'] and str(r['Stato Pagamento']) != 'Saldato':
                                 try:
                                     dt = pd.to_datetime(r['Data Scadenza'], dayfirst=True)
                                     if dt <= datetime.now() + timedelta(days=7):
@@ -121,22 +121,14 @@ else:
                                 except: pass
             except: continue
 
-        # Visualizzazione Alert Scadenze
         if scadenze_imminenti:
-            for alert in scadenze_imminenti:
-                st.markdown(f'<div class="alert-box">{alert}</div>', unsafe_allow_html=True)
+            for alert in scadenze_imminenti: st.markdown(f'<div class="alert-box">{alert}</div>', unsafe_allow_html=True)
 
         if all_rows:
-            df_final = pd.concat(all_rows)
-            tot_conf, tot_versato = df_final['Importo Totale'].sum(), df_final['Versato'].sum()
-            residuo = budget_totale - tot_conf
-
+            df_final = pd.concat(all_rows); tot_conf = df_final['Importo Totale'].sum(); tot_versato = df_final['Versato'].sum(); residuo = budget_totale - tot_conf
             st.write(f"**Avanzamento Spesa Reale: {tot_conf:,.2f}€ / {budget_totale:,.2f}€**")
             st.progress(min(tot_conf / budget_totale, 1.0) if budget_totale > 0 else 0)
-
-            # Analisi Predittiva Blindata
-            st.markdown(f'<div class="prediction-box">🔍 <b>Analisi Predittiva:</b> Hai ancora {potential_cost:,.2f}€ di articoli non confermati. ' +
-                        (f'✅ Budget OK!' if potential_cost <= residuo else f'⚠️ Attenzione: mancano {(potential_cost - residuo):,.2f}€') + '</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="prediction-box">🔍 <b>Analisi Predittiva:</b> Hai ancora {potential_cost:,.2f}€ non confermati. ' + (f'✅ Budget OK!' if potential_cost <= residuo else f'⚠️ Mancano {(potential_cost - residuo):,.2f}€') + '</div>', unsafe_allow_html=True)
 
             m1, m2, m3, m4 = st.columns(4)
             with m1: st.markdown(f'<div class="metric-card"><div class="metric-label">Budget</div><div class="metric-value">{budget_totale:,.0f}€</div></div>', unsafe_allow_html=True)
@@ -150,7 +142,7 @@ else:
             with col_dx:
                 st.plotly_chart(px.pie(df_final, values='Importo Totale', names='Ambiente', hole=0.5), use_container_width=True)
                 if st.button("📄 Report PDF"):
-                    pdf = PDF(); pdf.add_page(); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(*COLOR_AZZURRO); pdf.set_text_color(255, 255, 255)
+                    pdf = PDF(); pdf.add_page(); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(46, 117, 182); pdf.set_text_color(255, 255, 255)
                     pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True); pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True); pdf.cell(35, 10, 'Totale', 1, 0, 'C', True); pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
                     pdf.set_font('Arial', '', 9); pdf.set_text_color(0, 0, 0)
                     for _, row in df_final.iterrows():
@@ -161,11 +153,13 @@ else:
                     st.download_button("📥 Scarica PDF", data=bytes(pdf.output(dest='S')), file_name="Report.pdf")
             with col_sx: st.dataframe(df_final[['Ambiente', 'Descrizione_Visualizzata', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
-    # --- STANZE (CON SCADENZARIO) ---
+    # --- STANZE (FIX RIGHE ELIMINATE) ---
     elif "📦" in selezione:
         stanza_nome = selezione.replace("📦 ", "").lower()
         st.title(f"🏠 {stanza_nome.capitalize()}")
-        df = safe_clean_df(conn.read(worksheet=stanza_nome, ttl="1m"))
+
+        # Forza la rilettura per evitare errori di colonne rimosse
+        df = safe_clean_df(conn.read(worksheet=stanza_nome, ttl=0))
         col_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
         col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
 
@@ -177,18 +171,20 @@ else:
                 "Data Scadenza": st.column_config.DateColumn("📅 Scadenza", format="DD/MM/YYYY"),
                 "Note": st.column_config.TextColumn("Note", width="large")
             }
-            # Drop temporaneo per visualizzazione pulita
+            # Logica robusta: Mostra solo le colonne che ESISTONO davvero nel DF
             df_vis = df.drop(columns=['Descrizione_Visualizzata', 'Oggetto'], errors='ignore')
             df_edit = st.data_editor(df_vis, use_container_width=True, hide_index=True, column_config=c_config, num_rows="dynamic" if can_edit_structure else "fixed")
 
             if st.form_submit_button("💾 SALVA"):
                 for i in range(len(df_edit)):
                     try:
-                        p, s, q = float(df_edit.iloc[i].get('Prezzo Pieno',0)), float(df_edit.iloc[i].get('Sconto %',0)), float(df_edit.iloc[i].get('Acquistato',1))
-                        costo = p * (1 - (s/100)) if p > 0 else float(df_edit.iloc[i].get('Costo',0))
+                        p = float(df_edit.iloc[i].get('Prezzo Pieno', 0))
+                        s = float(df_edit.iloc[i].get('Sconto %', 0))
+                        q = float(df_edit.iloc[i].get('Acquistato', 1))
+                        costo = p * (1 - (s/100)) if p > 0 else float(df_edit.iloc[i].get('Costo', 0))
                         df_edit.at[df_edit.index[i], 'Costo'] = costo
                         df_edit.at[df_edit.index[i], 'Importo Totale'] = costo * q
-                        if str(df_edit.iloc[i][col_stato]).strip() == "Saldato":
+                        if str(df_edit.iloc[i].get(col_stato, "")).strip() == "Saldato":
                             df_edit.at[df_edit.index[i], 'Versato'] = costo * q
                     except: continue
                 conn.update(worksheet=stanza_nome, data=df_edit)
@@ -197,8 +193,8 @@ else:
     # --- WISHLIST BLINDATA ---
     elif "✨" in selezione:
         st.title("✨ Wishlist")
-        df_w = safe_clean_df(conn.read(worksheet="desideri", ttl="1m"))
+        df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
         c_wish = {"Foto": st.column_config.ImageColumn("Anteprima"), "Link": st.column_config.LinkColumn("Sito", display_text="Apri")}
-        df_ed_w = st.data_editor(df_w.drop(columns=['Descrizione_Visualizzata','Oggetto'], errors='ignore'), use_container_width=True, hide_index=True, column_config=c_wish, num_rows="dynamic" if can_edit_structure else "fixed")
+        df_ed_w = st.data_editor(df_w.drop(columns=['Descrizione_Visualizzata', 'Oggetto'], errors='ignore'), use_container_width=True, hide_index=True, column_config=c_wish, num_rows="dynamic" if can_edit_structure else "fixed")
         if st.button("Salva Wishlist"):
             conn.update(worksheet="desideri", data=df_ed_w); st.cache_data.clear(); st.balloons(); st.rerun()
