@@ -11,8 +11,8 @@ if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA")
     st.stop()
 
-# --- 2. CONFIGURAZIONE PAGINA & CSS ---
-st.set_page_config(page_title="Monitoraggio Arredamento V17.6", layout="wide", page_icon="🏠")
+# --- 2. CONFIGURAZIONE PAGINA & CSS (ESTETICA PROFESSIONALE) ---
+st.set_page_config(page_title="Monitoraggio Arredamento V17.7", layout="wide", page_icon="🏠")
 
 st.markdown("""
     <style>
@@ -32,7 +32,7 @@ st.markdown("""
 
 COLOR_AZZURRO = (46, 117, 182)
 
-# --- 3. CLASSE PDF (LOGICA SIGILLATA) ---
+# --- 3. BLOCCO PDF BLINDATO ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(*COLOR_AZZURRO)
@@ -40,7 +40,6 @@ class PDF(FPDF):
         self.set_font('Arial', 'B', 16); self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola memorizzata: Proprietà con à accentata
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -51,7 +50,7 @@ def safe_clean_df(df):
     if 'Articolo' in df.columns: df['Descrizione_Visualizzata'] = df['Articolo']
     elif 'Oggetto' in df.columns: df['Descrizione_Visualizzata'] = df['Oggetto']
     else: df['Descrizione_Visualizzata'] = ""
-    text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura']
+    text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']
     for col in text_cols:
         if col in df.columns:
             df[col] = df[col].astype(str).replace(['None', 'nan', '<NA>', 'undefined', 'null'], '')
@@ -61,7 +60,7 @@ def safe_clean_df(df):
             df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
     return df
 
-# --- 4. ACCESSO E CONNESSIONE ---
+# --- 4. LOGICA ACCESSO ---
 if "password_correct" not in st.session_state:
     st.title("🔒 Accesso Riservato")
     u = st.text_input("Utente"); p = st.text_input("Password", type="password")
@@ -132,7 +131,7 @@ else:
                         txt = str(row['Descrizione_Visualizzata']).encode('latin-1', 'replace').decode('latin-1')
                         start_y = pdf.get_y(); pdf.set_xy(40, start_y)
                         pdf.multi_cell(90, 10, txt, border=1)
-                        end_y = pdf.get_y(); h = max(end_y - start_y, 10)
+                        h = max(pdf.get_y() - start_y, 10)
                         pdf.set_xy(10, start_y); pdf.cell(30, h, str(row['Ambiente']), 1)
                         pdf.set_xy(130, start_y); pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
                         pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
@@ -142,11 +141,10 @@ else:
                     pdf.cell(35, 10, f"{tot_conf:,.2f}", 1, 0, 'R', True)
                     pdf.cell(35, 10, f"{tot_versato:,.2f}", 1, 1, 'R', True)
                     st.download_button("📥 Scarica PDF", data=bytes(pdf.output(dest='S')), file_name="Report.pdf")
-
             with col_sx:
                 st.dataframe(df_final[['Ambiente', 'Descrizione_Visualizzata', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
-    # --- STANZE ---
+    # --- STANZE (LOGICA BLINDATA) ---
     elif "📦" in selezione:
         stanza_nome = selezione.replace("📦 ", "").lower()
         st.title(f"🏠 {stanza_nome.capitalize()}")
@@ -161,31 +159,34 @@ else:
                 "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri"),
                 "Note": st.column_config.TextColumn("Note", width="large")
             }
-            placeholder = st.empty() # Per evitare ghosting
-            df_edit = placeholder.data_editor(df.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=c_config, num_rows="dynamic" if can_edit_structure else "fixed")
-
+            df_edit = st.data_editor(df.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=c_config, num_rows="dynamic" if can_edit_structure else "fixed")
             if st.form_submit_button("💾 SALVA MODIFICHE"):
                 for i in range(len(df_edit)):
                     try:
                         p, s, q = float(df_edit.iloc[i]['Prezzo Pieno']), float(df_edit.iloc[i]['Sconto %']), float(df_edit.iloc[i]['Acquistato'])
                         costo = p * (1 - (s/100)) if p > 0 else float(df_edit.iloc[i]['Costo'])
-                        totale_riga = costo * q
                         df_edit.at[df_edit.index[i], 'Costo'] = costo
-                        df_edit.at[df_edit.index[i], 'Importo Totale'] = totale_riga
+                        df_edit.at[df_edit.index[i], 'Importo Totale'] = costo * q
                         if str(df_edit.iloc[i][col_stato]).strip() == "Saldato":
-                            df_edit.at[df_edit.index[i], 'Versato'] = totale_riga
+                            df_edit.at[df_edit.index[i], 'Versato'] = costo * q
                     except: continue
                 conn.update(worksheet=stanza_nome, data=df_edit)
-                st.cache_data.clear()
-                st.balloons() # I palloncini sono tornati!
-                st.success("Dati aggiornati con successo!")
-                time.sleep(1.5)
-                st.rerun()
+                st.cache_data.clear(); st.balloons(); st.success("Dati aggiornati!"); time.sleep(1.5); st.rerun()
 
+    # --- WISHLIST (BLINDATURA SPECIALE) ---
     elif "✨" in selezione:
-        st.title("✨ Wishlist")
+        st.title("✨ Wishlist Blindata")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl="1m"))
-        df_ed_w = st.data_editor(df_w.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True)
+
+        # Blindatura Colonne Wishlist
+        c_wish = {
+            "Foto": st.column_config.ImageColumn("Anteprima"),
+            "Link": st.column_config.LinkColumn("Sito Web", display_text="Apri"),
+            "Note": st.column_config.TextColumn("Note", width="large")
+        }
+
+        df_ed_w = st.data_editor(df_w.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=c_wish, num_rows="dynamic" if can_edit_structure else "fixed")
+
         if st.button("Salva Wishlist"):
             conn.update(worksheet="desideri", data=df_ed_w)
-            st.cache_data.clear(); st.balloons(); st.rerun()
+            st.cache_data.clear(); st.balloons(); st.success("Wishlist salvata!"); time.sleep(1); st.rerun()
