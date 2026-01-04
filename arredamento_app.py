@@ -11,13 +11,12 @@ if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA")
     st.stop()
 
-# --- 2. CONFIGURAZIONE PAGINA & TEMA (DARK/LIGHT) ---
+# --- 2. CONFIGURAZIONE PAGINA & TEMA (BLINDATO) ---
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = False
 
-st.set_page_config(page_title="Monitoraggio Arredamento V18.0", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V18.1", layout="wide", page_icon="🚀")
 
-# Definizione colori in base al tema
 if st.session_state.dark_mode:
     bg_color = "#0e1117"
     card_color = "#1d2129"
@@ -47,6 +46,10 @@ st.markdown(f"""
         background-color: {card_color}; padding: 15px; border-left: 5px solid #f39c12;
         border-radius: 8px; margin-top: 10px; font-size: 0.95em;
     }}
+    .footer-signature {{
+        position: fixed; left: 20px; bottom: 20px; opacity: 0.6;
+        font-family: 'Courier New', Courier, monospace; font-size: 0.8em;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -60,6 +63,7 @@ class PDF(FPDF):
         self.set_font('Arial', 'B', 16); self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
+        # Regola: Proprietà con à
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -96,15 +100,20 @@ else:
         try: st.image("logo.png", use_container_width=True)
         except: pass
 
-        # Switch Tema
         st.session_state.dark_mode = st.toggle("🌙 Modalità Notte", value=st.session_state.dark_mode)
-
         selezione = st.selectbox("MENU NAVIGAZIONE", ["🏠 Riepilogo Generale", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze_reali])
+
         st.markdown("---")
         can_edit_structure = st.toggle("⚙️ Modifica Struttura", value=False)
+
+        # FIRMA BLINDATA
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown("✨ **Roberto & Gemini**")
+
         if st.button("Logout 🚪"): st.session_state.clear(); st.rerun()
 
-    # --- RIEPILOGO GENERALE + ANALISI PREDITTIVA ---
+    # --- RIEPILOGO GENERALE + ANALISI PREDITTIVA (BLINDATI) ---
     if "Riepilogo" in selezione:
         st.markdown(f'<div class="main-header"><h1 style="color:white; margin:0;">Command Center Arredamento</h1><p style="margin:0; opacity:0.8;">Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
 
@@ -114,18 +123,16 @@ else:
         except: budget_totale = 15000.0
 
         all_rows = []
-        potential_cost = 0 # Per analisi predittiva
+        potential_cost = 0
 
         for s in stanze_reali:
             try:
                 df_s = safe_clean_df(conn.read(worksheet=s, ttl="1m"))
                 if not df_s.empty:
                     c_sn = 'Acquista S/N' if 'Acquista S/N' in df_s.columns else 'S/N'
-                    # Confermato (S)
                     df_c = df_s[df_s[c_sn].str.upper().str.strip() == 'S'].copy()
                     df_c['Ambiente'] = s.capitalize()
                     all_rows.append(df_c)
-                    # Potenziale (N)
                     df_n = df_s[df_s[c_sn].str.upper().str.strip() != 'S']
                     potential_cost += df_n['Importo Totale'].sum()
             except: continue
@@ -136,18 +143,16 @@ else:
             tot_versato = df_final['Versato'].sum()
             percentuale = min(tot_conf / budget_totale, 1.0) if budget_totale > 0 else 0
 
-            # Sezione Avanzamento e Predizione
             st.write(f"**Avanzamento Spesa Reale: {tot_conf:,.2f}€ / {budget_totale:,.2f}€**")
             st.progress(percentuale)
 
-            # --- BLOCCO ANALISI PREDITTIVA ---
             residuo = budget_totale - tot_conf
             st.markdown(f"""
             <div class="prediction-box">
                 🔍 <b>Analisi Predittiva:</b><br>
-                Hai ancora <b>{potential_cost:,.2f}€</b> di articoli in lista ma non confermati.<br>
-                {'✅ Il tuo budget copre tutti i potenziali acquisti!' if potential_cost <= residuo
-                 else f'⚠️ Attenzione: se confermi tutto, supererai il budget di <b>{(potential_cost - residuo):,.2f}€</b>'}
+                Hai ancora <b>{potential_cost:,.2f}€</b> di articoli non confermati.<br>
+                {'✅ Budget OK per i potenziali acquisti!' if potential_cost <= residuo
+                 else f'⚠️ Budget insufficiente per il potenziale: mancano <b>{(potential_cost - residuo):,.2f}€</b>'}
             </div>
             """, unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
@@ -162,7 +167,7 @@ else:
 
             col_dx, col_sx = st.columns([1, 1.5])
             with col_dx:
-                st.plotly_chart(px.pie(df_final, values='Importo Totale', names='Ambiente', hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel), use_container_width=True)
+                st.plotly_chart(px.pie(df_final, values='Importo Totale', names='Ambiente', hole=0.5), use_container_width=True)
                 if st.button("📄 Report PDF"):
                     pdf = PDF(); pdf.add_page()
                     pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(*COLOR_AZZURRO); pdf.set_text_color(255, 255, 255)
@@ -177,11 +182,11 @@ else:
                         pdf.set_xy(10, start_y); pdf.cell(30, h, str(row['Ambiente']), 1)
                         pdf.set_xy(130, start_y); pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
                         pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
-                    st.download_button("📥 Scarica PDF", data=bytes(pdf.output(dest='S')), file_name="Report_Home.pdf")
+                    st.download_button("📥 Scarica PDF", data=bytes(pdf.output(dest='S')), file_name="Report.pdf")
             with col_sx:
                 st.dataframe(df_final[['Ambiente', 'Descrizione_Visualizzata', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
-    # --- STANZE BLINDATE ---
+    # --- STANZE & WISHLIST (BLINDATI) ---
     elif "📦" in selezione:
         stanza_nome = selezione.replace("📦 ", "").lower()
         st.title(f"🏠 {stanza_nome.capitalize()}")
@@ -209,7 +214,6 @@ else:
                 conn.update(worksheet=stanza_nome, data=df_edit)
                 st.cache_data.clear(); st.balloons(); st.success("Salvato!"); time.sleep(1); st.rerun()
 
-    # --- WISHLIST BLINDATA ---
     elif "✨" in selezione:
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl="1m"))
