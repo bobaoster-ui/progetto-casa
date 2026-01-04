@@ -13,8 +13,57 @@ if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.info("Per utilizzare questa applicazione è necessario il permesso dell'autore.")
     st.stop()
 
-# --- 2. CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="Monitoraggio Arredamento V16.2", layout="wide", page_icon="🏠")
+# --- 2. CONFIGURAZIONE PAGINA & CSS (Il "Motore Estetico") ---
+st.set_page_config(page_title="Monitoraggio Arredamento V17.0", layout="wide", page_icon="🏠")
+
+st.markdown("""
+    <style>
+    /* Sfondo dell'intera app */
+    .stApp {
+        background-color: #f8f9fc;
+    }
+
+    /* Header Blu come nel Mockup */
+    .main-header {
+        background-color: #2e5a88;
+        padding: 30px;
+        border-radius: 15px;
+        color: white;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    /* Stile delle Card Metriche */
+    .metric-card {
+        background-color: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        border-bottom: 5px solid #2e5a88;
+        text-align: center;
+    }
+
+    .metric-label {
+        color: #5a5a5a;
+        font-size: 0.9em;
+        font-weight: bold;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+    }
+
+    .metric-value {
+        color: #2e5a88;
+        font-size: 1.8em;
+        font-weight: 800;
+    }
+
+    /* Pulizia Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: white;
+        border-right: 1px solid #e0e0e0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -34,21 +83,16 @@ class PDF(FPDF):
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
-
-    # --- FIX DEFINITIVO COLONNA DESCRIZIONE ---
-    # Se esiste la colonna 'Articolo', la usiamo come descrizione principale per il Riepilogo
     if 'Articolo' in df.columns:
         df['Descrizione_Visualizzata'] = df['Articolo']
     elif 'Oggetto' in df.columns:
         df['Descrizione_Visualizzata'] = df['Oggetto']
     else:
         df['Descrizione_Visualizzata'] = ""
-
     text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']
     for col in text_cols:
         if col in df.columns:
             df[col] = df[col].astype(str).replace(['None', 'nan', '104807', '<NA>', 'undefined', 'null'], '')
-
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
         if c in df.columns:
@@ -72,18 +116,25 @@ else:
     with st.sidebar:
         try: st.image("logo.png", use_container_width=True)
         except: pass
+        st.markdown("<br>", unsafe_allow_html=True)
+        selezione = st.selectbox("MENU NAVIGAZIONE", ["🏠 Riepilogo Generale", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze_reali])
         st.markdown("---")
         can_edit_structure = st.toggle("⚙️ Modifica Struttura", value=False)
-        selezione = st.selectbox("Vai a:", ["🏠 Riepilogo Generale", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze_reali])
-        st.markdown("---")
         if st.button("Logout 🚪"):
             st.session_state.clear()
             st.rerun()
-        st.markdown("<div style='text-align: center; color: grey; font-size: 0.8em; margin-top: 50px;'>© 2026 - Roberto & Gemini<br>Proprietà: Jacopo</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; color: grey; font-size: 0.8em; margin-top: 50px;'>© 2026 - Roberto & Gemini<br>Proprietà: Jacopo</div>", unsafe_allow_html=True)
 
-    # --- RIEPILOGO GENERALE ---
+    # --- RIEPILOGO GENERALE (STILE MOCKUP V3.5) ---
     if "Riepilogo" in selezione:
-        st.title("🏠 Dashboard Riepilogo")
+        # Header Blue Design
+        st.markdown(f"""
+            <div class="main-header">
+                <h1 style="margin:0; color:white;">Gestione Spese Arredamento Professionale</h1>
+                <p style="margin:0; opacity: 0.8;">Proprietà: Jacopo - Report consolidato del {datetime.now().strftime('%d/%m/%Y')}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
         try:
             df_imp = conn.read(worksheet="Impostazioni", ttl=0)
             budget_iniziale = pd.to_numeric(df_imp.iloc[0, 1], errors='coerce')
@@ -106,28 +157,33 @@ else:
             df_final = pd.concat(all_rows)
             tot_conf = df_final['Importo Totale'].sum()
             tot_versato = df_final['Versato'].sum()
+            rimanente = budget_iniziale - tot_conf
 
-            c1, c2, c3 = st.columns(3)
-            c1.metric("BUDGET TOTALE", f"{budget_iniziale:,.2f} €")
-            c2.metric("CONFERMATO", f"{tot_conf:,.2f} €", delta=f"{budget_iniziale-tot_conf:,.2f} Disp.")
-            c3.metric("PAGATO EFFETTIVO", f"{tot_versato:,.2f} €")
+            # Cards Metriche (come nel disegno)
+            m1, m2, m3, m4 = st.columns(4)
+            with m1:
+                st.markdown(f'<div class="metric-card"><div class="metric-label">Budget Totale</div><div class="metric-value">{budget_iniziale:,.0f} €</div></div>', unsafe_allow_html=True)
+            with m2:
+                st.markdown(f'<div class="metric-card"><div class="metric-label">Confermato</div><div class="metric-value">{tot_conf:,.0f} €</div></div>', unsafe_allow_html=True)
+            with m3:
+                st.markdown(f'<div class="metric-card"><div class="metric-label">Pagato</div><div class="metric-value">{tot_versato:,.0f} €</div></div>', unsafe_allow_html=True)
+            with m4:
+                colore_disp = "#28a745" if rimanente >= 0 else "#dc3545"
+                st.markdown(f'<div class="metric-card"><div class="metric-label">Disponibile</div><div class="metric-value" style="color:{colore_disp}">{rimanente:,.0f} €</div></div>', unsafe_allow_html=True)
 
-            percentuale = min(tot_conf / budget_iniziale, 1.0)
-            colore_barra = "#2e75b6" if tot_conf <= budget_iniziale else "#ff4b4b"
-            st.markdown(f"""
-                <div style="background-color: #f0f2f6; border-radius: 10px; padding: 5px; margin: 10px 0;">
-                    <div style="background-color: {colore_barra}; width: {percentuale*100}%;
-                    height: 25px; border-radius: 7px; text-align: center; color: white; font-weight: bold; line-height: 25px;">
-                        {percentuale*100:.1f}% del Budget Utilizzato
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
 
-            st.divider()
+            # Grafico e Tabella in card bianche
+            col_dx, col_sx = st.columns([1, 1.5])
 
-            col_dx, col_sx = st.columns([1, 2])
             with col_dx:
-                if st.button("📄 Genera Report PDF"):
+                st.markdown('<div style="background-color:white; padding:20px; border-radius:12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">', unsafe_allow_html=True)
+                st.subheader("Analisi Spesa")
+                fig_pie = px.pie(df_final, values='Importo Totale', names='Ambiente', hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
+                fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=300)
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+                if st.button("📄 Esporta Report PDF"):
                     try:
                         pdf = PDF()
                         pdf.add_page()
@@ -147,46 +203,30 @@ else:
                             pdf.rect(x + 120, y, 35, h); pdf.set_xy(x + 120, y); pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 0, 0, 'R')
                             pdf.rect(x + 155, y, 35, h); pdf.set_xy(x + 155, y); pdf.cell(35, h, f"{row['Versato']:,.2f}", 0, 1, 'R')
                             pdf.set_y(y + h)
-                        pdf.ln(2); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(230, 230, 230)
-                        pdf.cell(120, 10, 'TOTALI GENERALI', 1, 0, 'R', True)
-                        pdf.cell(35, 10, f"{tot_conf:,.2f}", 1, 0, 'R', True)
-                        pdf.cell(35, 10, f"{tot_versato:,.2f}", 1, 1, 'R', True)
-                        st.download_button("📥 Scarica Report", data=bytes(pdf.output(dest='S')), file_name="Report_Arredi.pdf", mime="application/pdf")
-                    except Exception as e: st.error(f"Errore PDF: {e}")
+                        st.download_button("📥 Scarica", data=bytes(pdf.output(dest='S')), file_name="Report.pdf")
+                    except Exception as e: st.error(f"Errore: {e}")
+                st.markdown('</div>', unsafe_allow_html=True)
 
             with col_sx:
+                st.markdown('<div style="background-color:white; padding:20px; border-radius:12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">', unsafe_allow_html=True)
                 st.subheader("Dettaglio Confermati")
-                # Visualizziamo la descrizione corretta rinominandola al volo per l'utente
-                df_view = df_final[['Ambiente', 'Descrizione_Visualizzata', 'Importo Totale', 'Versato', 'Note']].copy()
+                df_view = df_final[['Ambiente', 'Descrizione_Visualizzata', 'Importo Totale', 'Versato']].copy()
                 df_view.rename(columns={'Descrizione_Visualizzata': 'Articolo'}, inplace=True)
                 st.dataframe(df_view, use_container_width=True, hide_index=True)
+                st.markdown('</div>', unsafe_allow_html=True)
 
-            st.divider()
-            g1, g2 = st.columns(2)
-            with g1:
-                df_pie = df_final.groupby('Ambiente')['Importo Totale'].sum().reset_index()
-                st.plotly_chart(px.pie(df_pie, values='Importo Totale', names='Ambiente', title="Distribuzione Spesa", hole=0.4), use_container_width=True)
-            with g2:
-                df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato", "Pagato"], "Euro": [budget_iniziale, tot_conf, tot_versato]})
-                st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce", title="Confronto Economico"), use_container_width=True)
-
-    # --- STANZE E WISHLIST ---
+    # --- STANZE E WISHLIST --- (Mantengono lo stile standard per facilità di editing)
     elif "📦" in selezione:
         stanza_nome = selezione.replace("📦 ", "").lower()
-        st.title(f"🏠 {stanza_nome.capitalize()}")
+        st.title(f"🏠 Gestione {stanza_nome.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=stanza_nome, ttl=0))
         col_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
         col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
-        with st.form(f"form_{stanza_nome}"):
-            config = {
-                col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"], width="small"),
-                col_stato: st.column_config.SelectboxColumn("Stato", options=["", "Acconto", "Saldato", "Ordinato", "Preventivo"]),
-                "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri"),
-                "Note": st.column_config.TextColumn("Note", width="large")
-            }
-            df_edit = st.data_editor(df.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
-            if st.form_submit_button("💾 SALVA MODIFICHE"):
-                with st.spinner("Salvataggio..."):
+        with st.form(f"f_{stanza_nome}"):
+            c = {col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"]), "Note": st.column_config.TextColumn("Note", width="large")}
+            df_edit = st.data_editor(df.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=c, num_rows="dynamic" if can_edit_structure else "fixed")
+            if st.form_submit_button("💾 SALVA"):
+                with st.spinner("Aggiornamento..."):
                     for i in range(len(df_edit)):
                         try:
                             p, s, q = float(df_edit.iloc[i]['Prezzo Pieno']), float(df_edit.iloc[i]['Sconto %']), float(df_edit.iloc[i]['Acquistato'])
@@ -194,19 +234,18 @@ else:
                             totale = costo * q
                             df_edit.at[df_edit.index[i], 'Costo'] = costo
                             df_edit.at[df_edit.index[i], 'Importo Totale'] = totale
-                            stato_val = str(df_edit.iloc[i][col_stato]).strip()
-                            if stato_val in ["", "None", "nan"]: df_edit.at[df_edit.index[i], 'Versato'] = 0.0
-                            elif stato_val == "Saldato": df_edit.at[df_edit.index[i], 'Versato'] = totale
+                            st_val = str(df_edit.iloc[i][col_stato]).strip()
+                            if st_val in ["", "None", "nan"]: df_edit.at[df_edit.index[i], 'Versato'] = 0.0
+                            elif st_val == "Saldato": df_edit.at[df_edit.index[i], 'Versato'] = totale
                         except: continue
                     conn.update(worksheet=stanza_nome, data=df_edit)
-                    st.success("Dati aggiornati!"); st.balloons(); time.sleep(1); st.rerun()
+                    st.success("Dati salvati!"); st.balloons(); time.sleep(1); st.rerun()
 
     elif "✨" in selezione:
-        st.title("✨ La tua Wishlist")
+        st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
         if 'Foto' in df_w.columns: df_w['Anteprima'] = df_w['Foto']
-        w_config = {"Foto": st.column_config.TextColumn("🔗 Link Foto"), "Anteprima": st.column_config.ImageColumn("Visualizzazione"), "Link": st.column_config.LinkColumn("🛒 Negozio", display_text="Vai")}
-        df_ed_w = st.data_editor(df_w.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=w_config, num_rows="dynamic" if can_edit_structure else "fixed")
-        if st.button("Salva Preferiti"):
+        df_ed_w = st.data_editor(df_w.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config={"Anteprima": st.column_config.ImageColumn("Foto")})
+        if st.button("Salva Wishlist"):
             df_save = df_ed_w.drop(columns=['Anteprima']) if 'Anteprima' in df_ed_w.columns else df_ed_w
             conn.update(worksheet="desideri", data=df_save); st.balloons(); time.sleep(1); st.rerun()
