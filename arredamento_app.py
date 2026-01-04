@@ -12,7 +12,7 @@ if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.stop()
 
 # --- 2. CONFIGURAZIONE PAGINA & CSS ---
-st.set_page_config(page_title="Monitoraggio Arredamento V17.3", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V17.4", layout="wide", page_icon="🏠")
 
 st.markdown("""
     <style>
@@ -39,7 +39,7 @@ class PDF(FPDF):
         self.set_font('Arial', 'B', 16); self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola: Proprietà con à
+        # Regola memorizzata: Proprietà con à accentata
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -50,10 +50,12 @@ def safe_clean_df(df):
     if 'Articolo' in df.columns: df['Descrizione_Visualizzata'] = df['Articolo']
     elif 'Oggetto' in df.columns: df['Descrizione_Visualizzata'] = df['Oggetto']
     else: df['Descrizione_Visualizzata'] = ""
+
     text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura']
     for col in text_cols:
         if col in df.columns:
             df[col] = df[col].astype(str).replace(['None', 'nan', '<NA>', 'undefined', 'null'], '')
+
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
         if c in df.columns:
@@ -84,7 +86,6 @@ else:
     if "Riepilogo" in selezione:
         st.markdown(f'<div class="main-header"><h1 style="color:white; margin:0;">Gestione Spese Arredamento</h1><p style="margin:0; opacity:0.8;">Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
 
-        # Recupero Budget
         try:
             df_imp = conn.read(worksheet="Impostazioni", ttl="5m")
             budget_totale = pd.to_numeric(df_imp.iloc[0, 1], errors='coerce')
@@ -107,7 +108,6 @@ else:
             tot_versato = df_final['Versato'].sum()
             percentuale = min(tot_conf / budget_totale, 1.0) if budget_totale > 0 else 0
 
-            # --- BARRA DI AVANZAMENTO ---
             st.write(f"**Avanzamento Spesa: {tot_conf:,.2f}€ su {budget_totale:,.2f}€ ({percentuale*100:.1f}%)**")
             st.progress(percentuale)
             st.markdown("<br>", unsafe_allow_html=True)
@@ -138,7 +138,7 @@ else:
                         pdf.set_xy(10, start_y); pdf.cell(30, h, str(row['Ambiente']), 1)
                         pdf.set_xy(130, start_y); pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1)
                         pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1)
-                    st.download_button("📥 Scarica PDF", data=bytes(pdf.output(dest='S')), file_name="Report.pdf")
+                    st.download_button("📥 Scarica PDF", data=bytes(pdf.output(dest='S')), file_name="Report_Arredi.pdf")
 
             with col_sx:
                 st.dataframe(df_final[['Ambiente', 'Descrizione_Visualizzata', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
@@ -150,22 +150,33 @@ else:
         df = safe_clean_df(conn.read(worksheet=stanza_nome, ttl="1m"))
         col_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
         col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
+
         with st.form(f"f_{stanza_nome}"):
+            # --- FIX: VOCI CORRETTE STATO PAGAMENTO ---
             c_config = {
                 col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"]),
-                col_stato: st.column_config.SelectboxColumn(col_stato, options=["", "Da Ordinare", "Ordinato", "In Arrivo", "Saldato"]),
+                col_stato: st.column_config.SelectboxColumn(col_stato, options=["", "Acconto", "Saldato", "Preventivo"]),
                 "Note": st.column_config.TextColumn("Note", width="large")
             }
             df_edit = st.data_editor(df.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=c_config, num_rows="dynamic" if can_edit_structure else "fixed")
+
             if st.form_submit_button("💾 SALVA"):
                 for i in range(len(df_edit)):
                     try:
                         p, s, q = float(df_edit.iloc[i]['Prezzo Pieno']), float(df_edit.iloc[i]['Sconto %']), float(df_edit.iloc[i]['Acquistato'])
                         costo = p * (1 - (s/100)) if p > 0 else float(df_edit.iloc[i]['Costo'])
+                        totale_riga = costo * q
                         df_edit.at[df_edit.index[i], 'Costo'] = costo
-                        df_edit.at[df_edit.index[i], 'Importo Totale'] = costo * q
-                        if str(df_edit.iloc[i][col_stato]) == "Saldato":
-                            df_edit.at[df_edit.index[i], 'Versato'] = costo * q
+                        df_edit.at[df_edit.index[i], 'Importo Totale'] = totale_riga
+
+                        # Logica Versato basata sullo stato corretto
+                        stato_attuale = str(df_edit.iloc[i][col_stato]).strip()
+                        if stato_attuale == "Saldato":
+                            df_edit.at[df_edit.index[i], 'Versato'] = totale_riga
+                        elif stato_attuale in ["", "Preventivo"]:
+                            df_edit.at[df_edit.index[i], 'Versato'] = 0.0
+                        # Se è 'Acconto', non tocchiamo il valore 'Versato' esistente
+                        # così Jacopo può scriverlo a mano nello Sheets o nel data_editor.
                     except: continue
                 conn.update(worksheet=stanza_nome, data=df_edit)
                 st.cache_data.clear(); st.success("Dati aggiornati!"); time.sleep(1); st.rerun()
