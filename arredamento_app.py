@@ -6,7 +6,7 @@ from datetime import datetime
 from fpdf import FPDF
 import time
 
-# --- 1. IL SIGILLO DI SICUREZZA (La tua protezione) ---
+# --- 1. IL SIGILLO DI SICUREZZA ---
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA")
     st.write("Questo software è un'opera dell'ingegno di **Roberto & Gemini**.")
@@ -14,7 +14,7 @@ if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.stop()
 
 # --- 2. CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="Monitoraggio Arredamento V16.0", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Monitoraggio Arredamento V16.1", layout="wide", page_icon="🏠")
 
 COLOR_AZZURRO = (46, 117, 182)
 
@@ -34,10 +34,16 @@ class PDF(FPDF):
 def safe_clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
+
+    # Fix Bug Colonne: Allineiamo "Articolo" su "Oggetto" se necessario
+    if 'Articolo' in df.columns and ('Oggetto' not in df.columns or df['Oggetto'].replace(['None', 'nan', ''], pd.NA).dropna().empty):
+        df['Oggetto'] = df['Articolo']
+
     text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']
     for col in text_cols:
         if col in df.columns:
             df[col] = df[col].astype(str).replace(['None', 'nan', '104807', '<NA>', 'undefined', 'null'], '')
+
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
         if c in df.columns:
@@ -64,19 +70,15 @@ else:
         st.markdown("---")
         can_edit_structure = st.toggle("⚙️ Modifica Struttura", value=False)
         selezione = st.selectbox("Vai a:", ["🏠 Riepilogo Generale", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze_reali])
-
         st.markdown("---")
         if st.button("Logout 🚪"):
             st.session_state.clear()
             st.rerun()
-
-        # Firma fissa
         st.markdown("<div style='text-align: center; color: grey; font-size: 0.8em; margin-top: 50px;'>© 2026 - Roberto & Gemini<br>Proprietà: Jacopo</div>", unsafe_allow_html=True)
 
     # --- RIEPILOGO GENERALE ---
     if "Riepilogo" in selezione:
         st.title("🏠 Dashboard Riepilogo")
-
         try:
             df_imp = conn.read(worksheet="Impostazioni", ttl=0)
             budget_iniziale = pd.to_numeric(df_imp.iloc[0, 1], errors='coerce')
@@ -100,13 +102,11 @@ else:
             tot_conf = df_final['Importo Totale'].sum()
             tot_versato = df_final['Versato'].sum()
 
-            # --- SEZIONE VISIVA BUDGET ---
             c1, c2, c3 = st.columns(3)
             c1.metric("BUDGET TOTALE", f"{budget_iniziale:,.2f} €")
-            c2.metric("CONFERMATO", f"{tot_conf:,.2f} €", delta=f"{budget_iniziale-tot_conf:,.2f} Disp.", delta_color="normal")
+            c2.metric("CONFERMATO", f"{tot_conf:,.2f} €", delta=f"{budget_iniziale-tot_conf:,.2f} Disp.")
             c3.metric("PAGATO EFFETTIVO", f"{tot_versato:,.2f} €")
 
-            # Progress Bar Grafica
             percentuale = min(tot_conf / budget_iniziale, 1.0)
             colore_barra = "#2e75b6" if tot_conf <= budget_iniziale else "#ff4b4b"
             st.markdown(f"""
@@ -120,6 +120,7 @@ else:
 
             st.divider()
 
+            # SEZIONE PDF E TABELLA
             col_dx, col_sx = st.columns([1, 2])
             with col_dx:
                 if st.button("📄 Genera Report PDF"):
@@ -131,6 +132,7 @@ else:
                         pdf.cell(35, 10, 'Totale', 1, 0, 'C', True); pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
                         pdf.set_font('Arial', '', 9); pdf.set_text_color(0, 0, 0)
                         for _, row in df_final.iterrows():
+                            # Fix PDF: usa Oggetto (che ora contiene anche Articolo)
                             art_val = str(row['Oggetto']).strip()
                             txt = art_val.encode('latin-1', 'replace').decode('latin-1')
                             linee = pdf.multi_cell(90, 5, txt, split_only=True)
@@ -147,7 +149,7 @@ else:
                         pdf.cell(35, 10, f"{tot_conf:,.2f}", 1, 0, 'R', True)
                         pdf.cell(35, 10, f"{tot_versato:,.2f}", 1, 1, 'R', True)
                         st.download_button("📥 Scarica Report", data=bytes(pdf.output(dest='S')), file_name="Report_Arredi.pdf", mime="application/pdf")
-                    except Exception as e: st.error(f"Errore: {e}")
+                    except Exception as e: st.error(f"Errore PDF: {e}")
 
             with col_sx:
                 st.subheader("Dettaglio Confermati")
@@ -162,14 +164,13 @@ else:
                 df_bar = pd.DataFrame({"Voce": ["Budget", "Confermato", "Pagato"], "Euro": [budget_iniziale, tot_conf, tot_versato]})
                 st.plotly_chart(px.bar(df_bar, x="Voce", y="Euro", color="Voce", title="Confronto Economico"), use_container_width=True)
 
-    # --- STANZE ---
+    # --- STANZE E WISHLIST --- (Invariati)
     elif "📦" in selezione:
         stanza_nome = selezione.replace("📦 ", "").lower()
         st.title(f"🏠 {stanza_nome.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=stanza_nome, ttl=0))
         col_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
         col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
-
         with st.form(f"form_{stanza_nome}"):
             config = {
                 col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"], width="small"),
@@ -178,9 +179,8 @@ else:
                 "Note": st.column_config.TextColumn("Note", width="large")
             }
             df_edit = st.data_editor(df, use_container_width=True, hide_index=True, column_config=config, num_rows="dynamic" if can_edit_structure else "fixed")
-
             if st.form_submit_button("💾 SALVA MODIFICHE"):
-                with st.spinner("Salvataggio in corso..."):
+                with st.spinner("Salvataggio..."):
                     for i in range(len(df_edit)):
                         try:
                             p, s, q = float(df_edit.iloc[i]['Prezzo Pieno']), float(df_edit.iloc[i]['Sconto %']), float(df_edit.iloc[i]['Acquistato'])
@@ -195,16 +195,11 @@ else:
                     conn.update(worksheet=stanza_nome, data=df_edit)
                     st.success("Dati aggiornati!"); st.balloons(); time.sleep(1); st.rerun()
 
-    # --- WISHLIST ---
     elif "✨" in selezione:
         st.title("✨ La tua Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl=0))
         if 'Foto' in df_w.columns: df_w['Anteprima'] = df_w['Foto']
-        w_config = {
-            "Foto": st.column_config.TextColumn("🔗 Link Immagine"),
-            "Anteprima": st.column_config.ImageColumn("Visualizzazione"),
-            "Link": st.column_config.LinkColumn("🛒 Negozio", display_text="Vai al sito")
-        }
+        w_config = {"Foto": st.column_config.TextColumn("🔗 Link Foto"), "Anteprima": st.column_config.ImageColumn("Visualizzazione"), "Link": st.column_config.LinkColumn("🛒 Negozio", display_text="Vai")}
         df_ed_w = st.data_editor(df_w, use_container_width=True, hide_index=True, column_config=w_config, num_rows="dynamic" if can_edit_structure else "fixed")
         if st.button("Salva Preferiti"):
             df_save = df_ed_w.drop(columns=['Anteprima']) if 'Anteprima' in df_ed_w.columns else df_ed_w
