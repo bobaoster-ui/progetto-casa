@@ -6,8 +6,18 @@ from datetime import datetime
 from fpdf import FPDF
 import time
 
-# 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Monitoraggio Arredamento V15.7", layout="wide", page_icon="🏠")
+# --- 1. IL SIGILLO DI SICUREZZA (La tua protezione) ---
+# Questo blocco impedisce l'uso del software a chi non ha configurato i Secrets correttamente
+if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
+    st.error("⚠️ LICENZA NON TROVATA")
+    st.write("Questo software è un'opera dell'ingegno di **Roberto & Gemini**.")
+    st.info("Per utilizzare questa applicazione è necessario il permesso dell'autore.")
+    st.stop() # Qui il programma si ferma e non carica altro
+
+# --- 2. CONFIGURAZIONE PAGINA (Solo se il sigillo è OK) ---
+st.set_page_config(page_title="Monitoraggio Arredamento V15.8", layout="wide", page_icon="🏠")
+
+
 
 COLOR_AZZURRO = (46, 117, 182)
 
