@@ -16,7 +16,7 @@ if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = False
 
 st.set_page_config(
-    page_title="Monitoraggio Arredamento V18.2",
+    page_title="Monitoraggio Arredamento V18.3",
     layout="wide",
     page_icon="🚀"
 )
@@ -67,7 +67,7 @@ st.markdown(f"""
 
 COLOR_AZZURRO = (46, 117, 182)
 
-# --- 3. BLOCCO PDF AGGIORNATO (TOTALI E FIRMA) ---
+# --- 3. BLOCCO PDF AGGIORNATO ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(*COLOR_AZZURRO)
@@ -76,7 +76,6 @@ class PDF(FPDF):
         self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10)
-        # Regola: Proprietà con à
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
@@ -85,7 +84,6 @@ class PDF(FPDF):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
         self.set_text_color(128, 128, 128)
-        # Firma richiesta
         firma = "Prodotto di Proprietà: Roberto & Gemini"
         self.cell(0, 10, firma.encode('latin-1', 'replace').decode('latin-1'), 0, 0, 'C')
 
@@ -133,9 +131,7 @@ else:
         selezione = st.selectbox("MENU NAVIGAZIONE", ["🏠 Riepilogo Generale", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze_reali])
         st.markdown("---")
         can_edit_structure = st.toggle("⚙️ Modifica Struttura", value=False)
-        st.markdown("<br><br><br>", unsafe_allow_html=True)
-        st.markdown("---")
-        st.markdown("✨ **Roberto & Gemini**")
+        st.markdown("<br><br><br>---<br>✨ **Roberto & Gemini**", unsafe_allow_html=True)
         st.markdown("<small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
         if st.button("Logout 🚪"):
             st.session_state.clear()
@@ -174,46 +170,24 @@ else:
             st.markdown(f'<div class="prediction-box">🔍 <b>Analisi Predittiva:</b> Potenziale spesa residua: <b>{potential_cost:,.2f}€</b></div>', unsafe_allow_html=True)
 
             m1, m2, m3, m4 = st.columns(4)
-            with m1:
-                st.markdown(f'<div class="metric-card"><div class="metric-label">Budget</div><div class="metric-value">{budget_totale:,.0f}€</div></div>', unsafe_allow_html=True)
-            with m2:
-                st.markdown(f'<div class="metric-card"><div class="metric-label">Confermato</div><div class="metric-value">{tot_conf:,.0f}€</div></div>', unsafe_allow_html=True)
-            with m3:
-                st.markdown(f'<div class="metric-card"><div class="metric-label">Pagato</div><div class="metric-value">{tot_versato:,.0f}€</div></div>', unsafe_allow_html=True)
-            with m4:
-                st.markdown(f'<div class="metric-card"><div class="metric-label">Disponibile</div><div class="metric-value">{residuo:,.0f}€</div></div>', unsafe_allow_html=True)
+            with m1: st.markdown(f'<div class="metric-card"><div class="metric-label">Budget</div><div class="metric-value">{budget_totale:,.0f}€</div></div>', unsafe_allow_html=True)
+            with m2: st.markdown(f'<div class="metric-card"><div class="metric-label">Confermato</div><div class="metric-value">{tot_conf:,.0f}€</div></div>', unsafe_allow_html=True)
+            with m3: st.markdown(f'<div class="metric-card"><div class="metric-label">Pagato</div><div class="metric-value">{tot_versato:,.0f}€</div></div>', unsafe_allow_html=True)
+            with m4: st.markdown(f'<div class="metric-card"><div class="metric-label">Disponibile</div><div class="metric-value">{residuo:,.0f}€</div></div>', unsafe_allow_html=True)
 
             col_dx, col_sx = st.columns([1, 1.5])
             with col_dx:
                 st.plotly_chart(px.pie(df_final, values='Importo Totale', names='Ambiente', hole=0.5), use_container_width=True)
                 if st.button("📄 Report PDF"):
-                    pdf = PDF()
-                    pdf.add_page()
-                    pdf.set_font('Arial', 'B', 10)
-                    pdf.set_fill_color(*COLOR_AZZURRO)
-                    pdf.set_text_color(255, 255, 255)
-                    pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True)
-                    pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True)
-                    pdf.cell(35, 10, 'Totale', 1, 0, 'C', True)
-                    pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
-                    pdf.set_font('Arial', '', 9)
-                    pdf.set_text_color(0, 0, 0)
+                    pdf = PDF(); pdf.add_page(); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(*COLOR_AZZURRO); pdf.set_text_color(255, 255, 255)
+                    pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True); pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True); pdf.cell(35, 10, 'Totale', 1, 0, 'C', True); pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
+                    pdf.set_font('Arial', '', 9); pdf.set_text_color(0, 0, 0)
                     for _, row in df_final.iterrows():
                         txt = str(row['Descrizione_Visualizzata']).encode('latin-1', 'replace').decode('latin-1')
-                        curr_y = pdf.get_y()
-                        pdf.set_xy(40, curr_y)
-                        pdf.multi_cell(90, 10, txt, border=1)
-                        h = max(pdf.get_y() - curr_y, 10)
-                        pdf.set_xy(10, curr_y)
-                        pdf.cell(30, h, str(row['Ambiente']), 1)
-                        pdf.set_xy(130, curr_y)
-                        pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R')
-                        pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
-                    pdf.ln(5)
-                    pdf.set_font('Arial', 'B', 10)
-                    pdf.cell(120, 10, 'TOTALI GENERALI', 1, 0, 'R')
-                    pdf.cell(35, 10, f"{tot_conf:,.2f}", 1, 0, 'R')
-                    pdf.cell(35, 10, f"{tot_versato:,.2f}", 1, 1, 'R')
+                        y = pdf.get_y(); pdf.set_xy(40, y); pdf.multi_cell(90, 10, txt, border=1)
+                        h = max(pdf.get_y() - y, 10); pdf.set_xy(10, y); pdf.cell(30, h, str(row['Ambiente']), 1)
+                        pdf.set_xy(130, y); pdf.cell(35, h, f"{row['Importo Totale']:,.2f}", 1, 0, 'R'); pdf.cell(35, h, f"{row['Versato']:,.2f}", 1, 1, 'R')
+                    pdf.ln(5); pdf.set_font('Arial', 'B', 10); pdf.cell(120, 10, 'TOTALI GENERALI', 1, 0, 'R'); pdf.cell(35, 10, f"{tot_conf:,.2f}", 1, 0, 'R'); pdf.cell(35, 10, f"{tot_versato:,.2f}", 1, 1, 'R')
                     st.download_button("📥 Scarica PDF", data=bytes(pdf.output(dest='S')), file_name="Report.pdf")
             with col_sx:
                 st.dataframe(df_final[['Ambiente', 'Descrizione_Visualizzata', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
@@ -226,43 +200,27 @@ else:
         col_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
         col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
         with st.form(f"f_{stanza_nome}"):
-            c_config = {
-                col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"]),
-                col_stato: st.column_config.SelectboxColumn(col_stato, options=["", "Acconto", "Saldato", "Preventivo"]),
-                "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri")
-            }
-            df_edit = st.data_editor(df.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=c_config, num_rows="dynamic" if can_edit_structure else "fixed")
+            # FISSARE IL BUG: rimosso num_rows="dynamic" diretto se can_edit_structure è off
+            df_to_edit = df.drop(columns=['Descrizione_Visualizzata'], errors='ignore')
+            df_edit = st.data_editor(df_to_edit, use_container_width=True, hide_index=True, num_rows="dynamic" if can_edit_structure else "fixed")
             if st.form_submit_button("💾 SALVA"):
                 for i in range(len(df_edit)):
                     try:
                         r = df_edit.iloc[i]
-                        p = float(r['Prezzo Pieno'])
-                        s = float(r['Sconto %'])
-                        q = float(r['Acquistato'])
+                        p, s, q = float(r['Prezzo Pieno']), float(r['Sconto %']), float(r['Acquistato'])
                         costo = p * (1 - (s/100)) if p > 0 else float(r['Costo'])
                         df_edit.at[df_edit.index[i], 'Costo'] = costo
                         df_edit.at[df_edit.index[i], 'Importo Totale'] = costo * q
                         if str(r[col_stato]).strip() == "Saldato":
                             df_edit.at[df_edit.index[i], 'Versato'] = costo * q
-                    except:
-                        continue
+                    except: continue
                 conn.update(worksheet=stanza_nome, data=df_edit)
-                st.cache_data.clear()
-                st.balloons()
-                st.success("Salvato!")
-                time.sleep(1)
-                st.rerun()
+                st.cache_data.clear(); st.balloons(); st.success("Salvato!"); time.sleep(1); st.rerun()
 
     elif "✨" in selezione:
         st.title("✨ Wishlist")
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl="1m"))
-        c_wish = {
-            "Foto": st.column_config.ImageColumn("Anteprima"),
-            "Link": st.column_config.LinkColumn("Sito", display_text="Apri")
-        }
-        df_ed_w = st.data_editor(df_w.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=c_wish, num_rows="dynamic" if can_edit_structure else "fixed")
+        df_ed_w = st.data_editor(df_w.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, num_rows="dynamic" if can_edit_structure else "fixed")
         if st.button("Salva Wishlist"):
             conn.update(worksheet="desideri", data=df_ed_w)
-            st.cache_data.clear()
-            st.balloons()
-            st.rerun()
+            st.cache_data.clear(); st.balloons(); st.rerun()
