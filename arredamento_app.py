@@ -3,7 +3,7 @@ from streamlit_gsheets import GSheetsConnection
 from supabase import create_client
 import pandas as pd
 
-# Connessione a Supabase (usa le chiavi che hai appena messo nei Secrets)
+# Configurazione connessione
 url = st.secrets["supabase"]["url"]
 key = st.secrets["supabase"]["key"]
 supabase = create_client(url, key)
@@ -12,36 +12,45 @@ supabase = create_client(url, key)
 conn = st.connection("gsheets", type=GSheetsConnection)
 stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
-st.title("🚀 Migrazione Dati: Sheets ➡️ Supabase")
+st.title("🚀 Trasloco Definitivo (Senza Duplicati)")
 
-if st.button("AVVIA TRASLOCO"):
-    for s in stanze:
-        st.write(f"Trasferimento stanza: {s}...")
-        try:
-            # Leggi da Sheets
+if st.button("AVVIA TRASLOCO PULITO"):
+    try:
+        # 1. PULIZIA: Rimuoviamo eventuali record vecchi per evitare duplicati
+        st.write("Pulizia database in corso...")
+        supabase.table("arredamento").delete().neq("id", 0).execute()
+
+        for s in stanze:
+            st.write(f"Trasferimento stanza: {s}...")
             df = conn.read(worksheet=s)
 
+            # Funzione di pulizia numeri per evitare l'errore 'nan'
+            def clean_num(val, default=0.0):
+                try:
+                    res = pd.to_numeric(val, errors='coerce')
+                    return float(res) if pd.notnull(res) else default
+                except:
+                    return default
+
             for _, row in df.iterrows():
-                # Prepariamo il dato per il database
                 data = {
                     "stanza": s.capitalize(),
                     "articolo": str(row.get('Articolo', row.get('Oggetto', 'N/A'))),
-                    "importo_totale": float(pd.to_numeric(row.get('Importo Totale', 0), errors='coerce') or 0),
-                    "versato": float(pd.to_numeric(row.get('Versato', 0), errors='coerce') or 0),
-                    "prezzo_pieno": float(pd.to_numeric(row.get('Prezzo Pieno', 0), errors='coerce') or 0),
-                    "sconto_percentuale": float(pd.to_numeric(row.get('Sconto %', 0), errors='coerce') or 0),
-                    "acquistato": float(pd.to_numeric(row.get('Acquistato', 1), errors='coerce') or 1),
-                    "costo": float(pd.to_numeric(row.get('Costo', 0), errors='coerce') or 0),
-                    "nota": str(row.get('Note', '')),
-                    "stato_pagamento": str(row.get('Stato Pagamento', row.get('Stato', ''))),
-                    "stanza_chiusa": str(row.get('Stanza Chiusa', 'FALSE')).upper() == 'TRUE'
+                    "importo_totale": clean_num(row.get('Importo Totale')),
+                    "versato": clean_num(row.get('Versato')),
+                    "prezzo_pieno": clean_num(row.get('Prezzo Pieno')),
+                    "sconto_percentuale": clean_num(row.get('Sconto %')),
+                    "acquistato": clean_num(row.get('Acquistato', 1), default=1.0),
+                    "costo": clean_num(row.get('Costo')),
+                    "nota": str(row.get('Note', '')).replace('nan', ''),
+                    "stato_pagamento": str(row.get('Stato Pagamento', row.get('Stato', ''))).replace('nan', ''),
+                    "stanza_chiusa": str(row.get('Stanza Chiusa', 'FALSE')).upper() in ['TRUE', '1', '1.0']
                 }
-                # Inserimento nel Database
                 supabase.table("arredamento").insert(data).execute()
 
             st.success(f"✅ Stanza {s} completata!")
-        except Exception as e:
-            st.error(f"Errore su {s}: {e}")
 
-    st.balloons()
-    st.info("Trasloco terminato! Ora puoi controllare il 'Table Editor' su Supabase.")
+        st.balloons()
+        st.info("Trasloco terminato con successo! Controlla pure il Table Editor su Supabase.")
+    except Exception as e:
+        st.error(f"Errore durante il trasloco: {e}")
