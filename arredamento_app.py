@@ -15,7 +15,7 @@ if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = False
 
-st.set_page_config(page_title="Monitoraggio Arredamento V19.2", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V19.3", layout="wide", page_icon="🚀")
 
 if st.session_state.dark_mode:
     bg_color, card_color, text_color = "#0e1117", "#1d2129", "#ffffff"
@@ -100,7 +100,8 @@ else:
         potential_cost = 0
         for s in stanze_reali:
             try:
-                df_s = safe_clean_df(conn.read(worksheet=s, ttl="1m"))
+                df_s_raw = conn.read(worksheet=s, ttl="1m")
+                df_s = safe_clean_df(df_s_raw)
                 if not df_s.empty:
                     c_sn = 'Acquista S/N' if 'Acquista S/N' in df_s.columns else 'S/N'
                     df_c = df_s[df_s[c_sn].str.upper().str.strip() == 'S'].copy()
@@ -146,14 +147,13 @@ else:
         stanza_nome = selezione.replace("📦 ", "").lower()
         st.title(f"🏠 {stanza_nome.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=stanza_nome, ttl="1m"))
-        col_sn = 'Acquista S/N' if 'Acquista S/N' in df_s.columns else 'S/N'
-        col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df_s.columns else 'Stato'
+        col_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
+        col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
         with st.form(f"f_{stanza_nome}"):
             df_to_edit = df.drop(columns=['Descrizione_Visualizzata'], errors='ignore')
             c_config = {col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"]), col_stato: st.column_config.SelectboxColumn(col_stato, options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Data Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri")}
             df_edit = st.data_editor(df_to_edit, use_container_width=True, hide_index=True, column_config=c_config, num_rows="dynamic" if can_edit_structure else "fixed")
             if st.form_submit_button("💾 SALVA"):
-                # --- PULIZIA ATOMICA PRIMA DEL SALVATAGGIO ---
                 for i in range(len(df_edit)):
                     try:
                         r = df_edit.iloc[i]
@@ -164,7 +164,6 @@ else:
                         if str(r.get(col_stato, "")).strip() == "Saldato":
                             df_edit.at[df_edit.index[i], 'Versato'] = costo * q
                     except: continue
-                # Riempimento None finali per evitare crash Google
                 df_edit = df_edit.fillna(0).replace('None', '')
                 conn.update(worksheet=stanza_nome, data=df_edit)
                 st.cache_data.clear(); st.balloons(); time.sleep(1); st.rerun()
