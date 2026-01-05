@@ -105,6 +105,9 @@ def safe_clean_df(df):
     for c in cols_num:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
+# --- MODIFICA 1: Gestione Data Scadenza ---
+    if 'Data Scadenza' in df.columns:
+        df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
     return df
 
 # --- 4. LOGICA ACCESSO E SIDEBAR ---
@@ -191,6 +194,42 @@ else:
                     st.download_button("📥 Scarica PDF", data=bytes(pdf.output(dest='S')), file_name="Report.pdf")
             with col_sx:
                 st.dataframe(df_final[['Ambiente', 'Descrizione_Visualizzata', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
+# --- MODIFICA 2: Motore Scadenzario ---
+        st.markdown("---")
+        st.subheader("🗓️ Scadenzario Pagamenti")
+
+        df_scadenze = df_final[df_final['Data Scadenza'].notna()].copy()
+
+        if not df_scadenze.empty:
+            # Calcolo giorni rimanenti
+            oggi = pd.Timestamp(datetime.now().date())
+            df_scadenze['Giorni al saldo'] = (df_scadenze['Data Scadenza'] - oggi).dt.days
+
+            # Filtriamo solo quelle non ancora saldate (opzionale, ma utile)
+            df_scadenze = df_scadenze[df_scadenze['Versato'] < df_scadenze['Importo Totale']]
+
+            if not df_scadenze.empty:
+                df_scadenze = df_scadenze.sort_values(by='Data Scadenza')
+
+                # Visualizzazione con icone di allerta
+                def alert_scadenza(days):
+                    if days < 0: return "🔴 SCADUTO"
+                    if days <= 7: return "🟠 IMMINENTE"
+                    return "🟢 In tempo"
+
+                df_scadenze['Stato Scadenza'] = df_scadenze['Giorni al saldo'].apply(alert_scadenza)
+
+                st.dataframe(
+                    df_scadenze[['Stanza', 'Descrizione_Visualizzata', 'Data Scadenza', 'Giorni al saldo', 'Stato Scadenza']],
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Data Scadenza": st.column_config.DateColumn("Data Scadenza", format="DD/MM/YYYY"),
+                        "Giorni al saldo": st.column_config.NumberColumn("Giorni rimanenti", format="%d gg")
+                    }
+                )
+            else:
+                st.info("✅ Nessun pagamento in scadenza trovato.")
 
     # --- STANZE & WISHLIST ---
     elif "📦" in selezione:
@@ -199,10 +238,27 @@ else:
         df = safe_clean_df(conn.read(worksheet=stanza_nome, ttl="1m"))
         col_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
         col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
-        with st.form(f"f_{stanza_nome}"):
+#        with st.form(f"f_{stanza_nome}"):
             # FISSARE IL BUG: rimosso num_rows="dynamic" diretto se can_edit_structure è off
+#            df_to_edit = df.drop(columns=['Descrizione_Visualizzata'], errors='ignore')
+#            df_edit = st.data_editor(df_to_edit, use_container_width=True, hide_index=True, num_rows="dynamic" if can_edit_structure else "fixed")
+with st.form(f"f_{stanza_nome}"):
             df_to_edit = df.drop(columns=['Descrizione_Visualizzata'], errors='ignore')
-            df_edit = st.data_editor(df_to_edit, use_container_width=True, hide_index=True, num_rows="dynamic" if can_edit_structure else "fixed")
+
+            # --- MODIFICA 3: Configurazione colonne nel Data Editor ---
+            c_config = {
+                col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"]),
+                col_stato: st.column_config.SelectboxColumn(col_stato, options=["", "Acconto", "Saldato", "Preventivo"]),
+                "Data Scadenza": st.column_config.DateColumn("Data Scadenza", format="DD/MM/YYYY")
+            }
+
+            df_edit = st.data_editor(
+                df_to_edit,
+                use_container_width=True,
+                hide_index=True,
+                column_config=c_config, # <-- Ora passiamo la configurazione
+                num_rows="dynamic" if can_edit_structure else "fixed"
+            )
             if st.form_submit_button("💾 SALVA"):
                 for i in range(len(df_edit)):
                     try:
