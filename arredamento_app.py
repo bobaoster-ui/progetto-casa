@@ -10,7 +10,7 @@ import io
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V31.1", layout="wide", page_icon="💎")
+st.set_page_config(page_title="Monitoraggio Arredamento V32.0", layout="wide", page_icon="💎")
 
 @st.cache_resource
 def init_connection():
@@ -18,11 +18,10 @@ def init_connection():
 
 supabase = init_connection()
 
-# --- CLASSE PDF ELEGANTE (RIPRISTINATA) ---
+# --- CLASSE PDF PROFESSIONALE (RIPRISTINATA) ---
 class PDF(FPDF):
     def header(self):
-        # Rettangolo Blu Testata
-        self.set_fill_color(46, 117, 182)
+        self.set_fill_color(46, 117, 182) # Blu Professionale
         self.rect(0, 0, 210, 40, 'F')
         self.set_font('Helvetica', 'B', 16)
         self.set_text_color(255, 255, 255)
@@ -57,7 +56,7 @@ else:
         st.session_state.dark_mode = st.toggle("🌙 Notte", st.session_state.dark_mode)
         sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s}" for s in stanze_fisiche])
 
-        # Gestione Budget
+        # --- BUDGET PERSISTENTE (FISSO) ---
         res_b = supabase.table("arredamento").select("importo_totale").eq("stanza", "Impostazioni").eq("articolo", "Budget_Totale").execute()
         current_b = res_b.data[0]['importo_totale'] if res_b.data else 15000.0
         new_budget = st.number_input("Budget Obiettivo (€)", value=float(current_b), step=500.0)
@@ -93,7 +92,6 @@ else:
             with c1:
                 st.plotly_chart(px.pie(df_real, values='importo_totale', names='stanza', hole=0.5), use_container_width=True)
             with c2:
-                # --- SCADENZARIO RIPRISTINATO ---
                 st.subheader("🗓️ Scadenzario")
                 sc = df_real[df_real['scadenza'].notna() & (df_real['versato'] < df_real['importo_totale'])].copy()
                 if not sc.empty:
@@ -101,21 +99,27 @@ else:
                     sc['Stato'] = sc['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
                     st.dataframe(sc.sort_values('gg')[['stanza','articolo','scadenza','Stato']], use_container_width=True, hide_index=True)
                 else:
-                    st.write("✅ Nessun pagamento in scadenza")
+                    st.write("✅ Tutto in regola.")
 
-            if st.button("📑 Genera Report PDF Professionale"):
-                pdf = PDF()
-                pdf.add_page()
-                pdf.set_text_color(31, 41, 55)
-                pdf.set_font('Helvetica', 'B', 12)
-                pdf.cell(0, 10, f"Riepilogo Finanziario:", ln=True)
-                pdf.set_font('Helvetica', '', 12)
-                pdf.cell(0, 8, f"- Totale Impegnato: {conf:,.2f} EUR", ln=True)
-                pdf.cell(0, 8, f"- Totale Versato: {pag:,.2f} EUR", ln=True)
-                pdf.cell(0, 8, f"- Residuo da Pagare: {conf-pag:,.2f} EUR", ln=True)
+            # --- FIX PDF DEFINITIVO (METODO BUFFER) ---
+            pdf = PDF()
+            pdf.add_page()
+            pdf.set_text_color(31, 41, 55)
+            pdf.set_font('Helvetica', 'B', 12)
+            pdf.cell(0, 10, "RIEPILOGO FINANZIARIO GENERALE", ln=True)
+            pdf.set_font('Helvetica', '', 12)
+            pdf.cell(0, 8, f"- Totale Impegnato: {conf:,.2f} EUR", ln=True)
+            pdf.cell(0, 8, f"- Totale Pagato: {pag:,.2f} EUR", ln=True)
+            pdf.cell(0, 8, f"- Residuo da Versare: {conf-pag:,.2f} EUR", ln=True)
 
-                # Buffer per il download
-                st.download_button("📥 Scarica Report PDF", pdf.output(), "Report_Arredamento_Jacopo.pdf", "application/pdf")
+            # Generiamo i dati binari e li mettiamo in un pulsante di download sicuro
+            pdf_output = pdf.output()
+            st.download_button(
+                label="📑 Scarica Report PDF Professionale",
+                data=bytes(pdf_output),
+                file_name=f"Report_Arredamento_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf"
+            )
 
     elif "📦" in sel:
         sn = sel.replace("📦 ", "")
