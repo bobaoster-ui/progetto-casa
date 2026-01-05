@@ -39,13 +39,28 @@ class PDF(FPDF):
 def clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
+
+    # --- FIX CHIRURGICO PER LA PERSISTENZA ---
+    if 'Stanza Chiusa' in df.columns:
+        # Trasforma i "TRUE" di Sheets in veri valori Booleani che Streamlit capisce
+        df['Stanza Chiusa'] = df['Stanza Chiusa'].astype(str).str.upper().str.strip()
+    else:
+        df['Stanza Chiusa'] = "FALSE"
+    # -----------------------------------------
+
     df['DV'] = df['Articolo'] if 'Articolo' in df.columns else df.get('Oggetto', 'N/A')
-    for c in ['Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto', 'Stanza Chiusa']:
+
+    for c in ['Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']:
         if c in df.columns: df[c] = df[c].astype(str).replace(['None', 'nan', '<NA>', 'null', ''], '')
+
     for c in ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']:
         if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
-    if 'Data Scadenza' in df.columns: df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
+
+    if 'Data Scadenza' in df.columns:
+        df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
+
     return df
+
 
 if "password_correct" not in st.session_state:
     st.title("🔒 Accesso")
