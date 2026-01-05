@@ -22,6 +22,7 @@ st.markdown(f"""<style>
     .metric-card {{background-color: {cc}; padding: 15px; border-radius: 10px; border-bottom: 4px solid #2e5a88; text-align: center; color: {tc}; margin-bottom: 10px;}}
     .metric-value-mini {{font-size: 1.4em; font-weight: 700; color: #2e5a88;}}
     .metric-value {{font-size: 1.8em; font-weight: 800; color: #2e5a88;}}
+    .gold-seal {{background: linear-gradient(145deg, #ffdf00, #d4af37); padding: 20px; border-radius: 15px; text-align: center; color: black; font-weight: bold; border: 2px solid #b8860b; margin-bottom: 20px; box-shadow: 0px 4px 15px rgba(212, 175, 55, 0.4);}}
 </style>""", unsafe_allow_html=True)
 
 class PDF(FPDF):
@@ -39,7 +40,7 @@ def clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
     df['DV'] = df['Articolo'] if 'Articolo' in df.columns else df.get('Oggetto', 'N/A')
-    for c in ['Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']:
+    for c in ['Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto', 'Stanza Chiusa']:
         if c in df.columns: df[c] = df[c].astype(str).replace(['None', 'nan', '<NA>', 'null', ''], '')
     for c in ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']:
         if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
@@ -68,7 +69,6 @@ else:
         st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
         try: bud = pd.to_numeric(conn.read(worksheet="Impostazioni", ttl="5m").iloc[0,1], errors='coerce')
         except: bud = 15000.0
-
         all_d = []
         for s in stanze:
             try:
@@ -77,7 +77,6 @@ else:
                     cs = 'Acquista S/N' if 'Acquista S/N' in d.columns else 'S/N'
                     dc = d[d[cs].str.upper().str.strip() == 'S'].copy(); dc['Stanza'] = s.capitalize(); all_d.append(dc)
             except: continue
-
         if all_d:
             df_r = pd.concat(all_d); conf, pag = df_r['Importo Totale'].sum(), df_r['Versato'].sum()
             m1, m2, m3, m4 = st.columns(4)
@@ -85,7 +84,6 @@ else:
             m2.markdown(f'<div class="metric-card">CONFERMATO<div class="metric-value">{conf:,.0f}€</div></div>', unsafe_allow_html=True)
             m3.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
-
             st.subheader("🗓️ Scadenzario")
             sc = df_r[df_r['Data Scadenza'].notna() & (df_r['Versato'] < df_r['Importo Totale'])].copy()
             if not sc.empty:
@@ -93,7 +91,6 @@ else:
                 sc['Stato'] = sc['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
                 sc['Data Scadenza'] = sc['Data Scadenza'].dt.date
                 st.dataframe(sc.sort_values('gg')[['Stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True, column_config={"Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY")})
-
             c_p, c_t = st.columns([1, 1.2])
             with c_p:
                 st.plotly_chart(px.pie(df_r, values='Importo Totale', names='Stanza', hole=0.5), use_container_width=True)
@@ -112,6 +109,12 @@ else:
         sn = sel.replace("📦 ", "").lower(); st.title(f"🏠 {sn.capitalize()}")
         try:
             df = clean_df(conn.read(worksheet=sn, ttl="0"))
+
+            # --- LOGICA SIGILLO ORO (NUOVA) ---
+            is_closed = any(df['Stanza Chiusa'].astype(str).str.upper() == "TRUE") if 'Stanza Chiusa' in df.columns else False
+            if is_closed:
+                st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è stata ufficialmente completata!</div>', unsafe_allow_html=True)
+
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
             col_t1, col_t2 = st.columns(2)
             col_t1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value-mini">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
@@ -128,10 +131,16 @@ else:
                 if st.button("Conferma Nota"): st.session_state[nt_key] = nt; st.success("Nota pronta!")
 
             with st.form(f"f_{sn}"):
+                # --- CHECKBOX SIGILLO ORO ---
+                check_chiusura = st.checkbox("🔒 Chiudi Stanza (Attiva Sigillo Oro)", value=is_closed)
+
                 cfg = {c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]), c_st: st.column_config.SelectboxColumn(c_st, options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri")}
                 df_e = st.data_editor(df.drop(columns=['DV']), use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
 
                 if st.form_submit_button("💾 SALVA TUTTO"):
+                    # Salvataggio stato Sigillo Oro
+                    df_e['Stanza Chiusa'] = "TRUE" if check_chiusura else "FALSE"
+
                     for i in range(len(df_e)):
                         k = f"note_val_{sn}_{i}"
                         if k in st.session_state: df_e.at[i, 'Note'] = st.session_state[k]
@@ -139,14 +148,13 @@ else:
                             r = df_e.iloc[i]; p, s, q = float(r.get('Prezzo Pieno',0)), float(r.get('Sconto %',0)), float(r.get('Acquistato',1))
                             c = p * (1-(s/100)) if p>0 else float(r.get('Costo',0))
                             df_e.at[df_e.index[i],'Costo'] = c; df_e.at[df_e.index[i],'Importo Totale'] = c*q
-                            # LOGICA SALDATO: Paga tutto e togli scadenza
                             if "Saldato" in str(r.get(c_st,'')):
                                 df_e.at[df_e.index[i],'Versato'] = c*q
-                                df_e.at[df_e.index[i],'Data Scadenza'] = pd.NaT # RIMUOVE SCADENZA
+                                df_e.at[df_e.index[i],'Data Scadenza'] = pd.NaT
                         except: continue
                     conn.update(worksheet=sn, data=df_e.fillna(''))
                     st.cache_data.clear(); st.balloons(); st.success("Salvato con successo!"); time.sleep(1); st.rerun()
-        except: st.balloons(); st.success("Dati aggiornati (Google sta rielaborando...)"); time.sleep(1); st.rerun()
+        except Exception as e: st.error(f"Errore: {e}")
 
     elif "✨" in sel:
         st.title("✨ Wishlist")
