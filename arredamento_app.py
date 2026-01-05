@@ -10,9 +10,9 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.1", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.2", layout="wide", page_icon="🏆")
 
-# --- STILE ORIGINALE RIPRISTINATO + ORO ---
+# --- STILE ORIGINALE + ORO ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
 bc, cc, tc = ("#0e1117", "#1d2129", "#ffffff") if st.session_state.dark_mode else ("#f8f9fc", "#ffffff", "#1f2937")
 grad = "linear-gradient(90deg, #0f2027, #203a43, #2c5364)" if st.session_state.dark_mode else "linear-gradient(90deg, #2e5a88, #4a90e2)"
@@ -121,7 +121,7 @@ else:
             col_t1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value-mini">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
             col_t2.markdown(f'<div class="metric-card">PAGATO STANZA<div class="metric-value-mini">{t_ver:,.2f}€</div></div>', unsafe_allow_html=True)
 
-            # --- LOGICA SIGILLO ORO (CORRETTA V22.1) ---
+            # LOGICA SIGILLO ORO
             c_st = ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato')
             c_sn = ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N')
             da_acquistare = df[df[c_sn].str.upper().str.strip() == 'S']
@@ -154,43 +154,33 @@ else:
                         except: continue
                     conn.update(worksheet=sn, data=df_e.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
 
-# ... [Sostituisci la parte della Checklist nel blocco elif "📦" in sel: con questa] ...
-
+            # --- CHECKLIST PERSISTENTE (V22.2) ---
             st.markdown("---")
             st.subheader("🏁 Checklist Fine Lavori")
-
-            # Caricamento dati collaudi
             try:
-                df_c = conn.read(worksheet="collaudi", ttl="0")
-                # Se la stanza non esiste nel foglio, la creiamo con valori False
+                df_c = conn.read(worksheet="collaudi", ttl="5m")
                 if sn not in df_c['Stanza'].values:
                     new_row = pd.DataFrame([{'Stanza': sn, 'Montaggio': False, 'Integrita': False, 'Pulizia': False}])
                     df_c = pd.concat([df_c, new_row], ignore_index=True)
             except:
-                # Se il foglio è vuoto o non esiste, creiamo una struttura base
                 df_c = pd.DataFrame([{'Stanza': sn, 'Montaggio': False, 'Integrita': False, 'Pulizia': False}])
 
-            # Recuperiamo i valori attuali per questa stanza
             idx_c = df_c[df_c['Stanza'] == sn].index[0]
+            col_ch1, col_ch2, col_ch3 = st.columns(3)
+            v1 = col_ch1.checkbox(f"Montaggio {sn.capitalize()} OK", value=bool(df_c.at[idx_c, 'Montaggio']), key=f"c1_{sn}")
+            v2 = col_ch2.checkbox("Integrità (No danni)", value=bool(df_c.at[idx_c, 'Integrita']), key=f"c2_{sn}")
+            v3 = col_ch3.checkbox("Pulizia Finale", value=bool(df_c.at[idx_c, 'Pulizia']), key=f"c3_{sn}")
 
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                v1 = st.checkbox(f"Montaggio {sn.capitalize()} Verificato", value=bool(df_c.at[idx_c, 'Montaggio']), key=f"c1_{sn}")
-            with c2:
-                v2 = st.checkbox("Assenza Graffi/Danni", value=bool(df_c.at[idx_c, 'Integrita']), key=f"c2_{sn}")
-            with c3:
-                v3 = st.checkbox("Pulizia Post-Cantiere", value=bool(df_c.at[idx_c, 'Pulizia']), key=f"c3_{sn}")
-
-            # Se l'utente cambia una spunta, salviamo subito su Google Sheets
-            if v1 != df_c.at[idx_c, 'Montaggio'] or v2 != df_c.at[idx_c, 'Integrita'] or v3 != df_c.at[idx_c, 'Pulizia']:
+            if st.button(f"Aggiorna Checklist {sn.capitalize()}"):
                 df_c.at[idx_c, 'Montaggio'] = v1
                 df_c.at[idx_c, 'Integrita'] = v2
                 df_c.at[idx_c, 'Pulizia'] = v3
                 conn.update(worksheet="collaudi", data=df_c)
-                st.toast(f"✅ Checklist {sn.capitalize()} salvata!", icon="💾")
+                st.success("Checklist salvata su Drive!")
+                time.sleep(1); st.rerun()
 
-# ... [Prosegue con il resto del codice] ...
-        except: st.error("⚠️ Google è un po' lento. Ricarica la pagina.")
+        except Exception as e:
+            st.error(f"⚠️ Errore di connessione o foglio 'collaudi' mancante. Dettagli: {e}")
 
     elif "✨" in sel:
         st.title("✨ Wishlist")
