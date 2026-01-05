@@ -10,7 +10,7 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.7.1", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.8", layout="wide", page_icon="🏆")
 
 # --- [BLINDATO: STILE E CSS] ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -91,15 +91,23 @@ else:
             sc = df_r[df_r['Data Scadenza'].notna() & (df_r['Versato'] < df_r['Importo Totale'])].copy()
             if not sc.empty:
                 st.subheader("🗓️ Scadenzario")
+                sc['Data'] = sc['Data Scadenza'].dt.strftime('%d/%m/%Y')
                 sc['gg'] = (sc['Data Scadenza'] - pd.Timestamp(datetime.now().date())).dt.days
                 sc['Stato'] = sc['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
-                st.dataframe(sc.sort_values('gg')[['Stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
+                st.dataframe(sc.sort_values('gg')[['Stanza','DV','Data','Stato']], use_container_width=True, hide_index=True)
 
             c_p, c_t = st.columns([1, 1.2])
             with c_p:
                 st.plotly_chart(px.pie(df_r, values='Importo Totale', names='Stanza', hole=0.5), use_container_width=True)
-                if st.button("📄 PDF"):
-                    p = PDF(); p.add_page(); p.set_font('Arial', 'B', 10)
+                if st.button("📄 Genera PDF"):
+                    p = PDF(); p.add_page(); p.set_font('Arial', 'B', 10); p.set_fill_color(46, 117, 182); p.set_text_color(255, 255, 255)
+                    p.cell(30, 10, 'Stanza', 1, 0, 'C', 1); p.cell(90, 10, 'Articolo', 1, 0, 'C', 1); p.cell(35, 10, 'Totale', 1, 0, 'C', 1); p.cell(35, 10, 'Versato', 1, 1, 'C', 1)
+                    p.set_font('Arial', '', 9); p.set_text_color(0, 0, 0)
+                    for _, r in df_r.iterrows():
+                        y_start = p.get_y(); p.set_xy(40, y_start)
+                        p.multi_cell(90, 10, str(r['DV']).encode('latin-1','replace').decode('latin-1'), 1)
+                        h = max(p.get_y() - y_start, 10); p.set_xy(10, y_start); p.cell(30, h, str(r['Stanza']), 1)
+                        p.set_xy(130, y_start); p.cell(35, h, f"{r['Importo Totale']:,.2f}", 1); p.cell(35, h, f"{r['Versato']:,.2f}", 1, 1)
                     st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
             c_t.dataframe(df_r[['Stanza','DV','Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
@@ -107,18 +115,17 @@ else:
         sn = sel.replace("📦 ", "").lower(); st.title(f"🏠 {sn.capitalize()}")
         try:
             df = clean_df(conn.read(worksheet=sn, ttl="0"))
-
             if 'Stanza Chiusa' not in df.columns: df['Stanza Chiusa'] = "FALSE"
-            is_closed = str(df.at[0, 'Stanza Chiusa']).upper() == "TRUE"
+
+            # Recuperiamo lo stato attuale
+            curr_closed = str(df.at[0, 'Stanza Chiusa']).upper() == "TRUE"
 
             head1, head2 = st.columns([3, 1])
             with head2:
-                new_status = st.toggle("🔒 Chiudi Stanza", value=is_closed, key=f"tog_{sn}")
-                if new_status != is_closed:
-                    df['Stanza Chiusa'] = "TRUE" if new_status else "FALSE"
-                    conn.update(worksheet=sn, data=df.fillna('')); st.rerun()
+                # Il toggle ora non fa rerun immediato, ma cambia il valore nel dataframe
+                is_closed = st.toggle("🔒 Chiudi Stanza", value=curr_closed, key=f"tog_{sn}")
 
-            if new_status:
+            if is_closed:
                 st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è stata ufficialmente completata!</div>', unsafe_allow_html=True)
 
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
@@ -129,18 +136,13 @@ else:
             c_st, c_sn = ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'), ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N')
 
             with st.form(f"f_{sn}"):
-                # Mostriamo Stanza Chiusa nell'editor come richiesto
-                cols_to_show = [c for c in df.columns if c not in ['DV']]
-                cfg = {
-                    c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]),
-                    c_st: st.column_config.SelectboxColumn(c_st, options=["", "Acconto", "Saldato", "Preventivo"]),
-                    "Stanza Chiusa": st.column_config.SelectboxColumn("Stanza Chiusa", options=["TRUE", "FALSE"]),
-                    "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"),
-                    "Link Fattura": st.column_config.LinkColumn("📂 Doc Drive", display_text="Apri")
-                }
+                cols_to_show = [c for c in df.columns if c not in ['DV', 'Stanza Chiusa']]
+                cfg = {c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]), c_st: st.column_config.SelectboxColumn(c_st, options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc Drive", display_text="Apri")}
                 df_e = st.data_editor(df[cols_to_show], use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
 
                 if st.form_submit_button("💾 SALVA TUTTO"):
+                    # Salviamo lo stato del toggle nel dataframe
+                    df_e['Stanza Chiusa'] = "TRUE" if is_closed else "FALSE"
                     for i in range(len(df_e)):
                         try:
                             r = df_e.iloc[i]; p, s, q = float(r.get('Prezzo Pieno',0)), float(r.get('Sconto %',0)), float(r.get('Acquistato',1))
@@ -153,7 +155,7 @@ else:
                                 df_e.at[df_e.index[i],'Versato'] = 0.0
                         except: continue
                     conn.update(worksheet=sn, data=df_e.fillna('')); st.cache_data.clear()
-                    st.success(f"Dati {sn.capitalize()} salvati!"); st.balloons(); time.sleep(1); st.rerun()
+                    st.success(f"Proprietà aggiornata con successo!"); st.balloons(); time.sleep(1); st.rerun()
 
             st.markdown("---")
             st.subheader("🏁 Checklist Fine Lavori")
@@ -167,7 +169,7 @@ else:
                 if st.button(f"Aggiorna Checklist {sn.capitalize()}"):
                     df_c.at[idx_c, 'Montaggio'], df_c.at[idx_c, 'Integrita'], df_c.at[idx_c, 'Pulizia'] = v1, v2, v3
                     conn.update(worksheet="collaudi", data=df_c); st.success("Checklist salvata!"); st.balloons(); time.sleep(1); st.rerun()
-            except: st.warning("Foglio 'collaudi' non trovato.")
+            except: st.warning("Foglio 'collaudi' non pronto.")
         except Exception as e: st.error(f"Errore: {e}")
 
     elif "✨" in sel:
