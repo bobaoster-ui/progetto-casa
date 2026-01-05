@@ -10,7 +10,7 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.6", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.7.1", layout="wide", page_icon="🏆")
 
 # --- [BLINDATO: STILE E CSS] ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -42,7 +42,7 @@ def clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
     df['DV'] = df['Articolo'] if 'Articolo' in df.columns else df.get('Oggetto', 'N/A')
-    for c in ['Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']:
+    for c in ['Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto', 'Stanza Chiusa']:
         if c in df.columns: df[c] = df[c].astype(str).replace(['None', 'nan', '<NA>', 'null', ''], '')
     for c in ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']:
         if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
@@ -88,9 +88,9 @@ else:
             m3.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
 
-            st.subheader("🗓️ Scadenzario")
             sc = df_r[df_r['Data Scadenza'].notna() & (df_r['Versato'] < df_r['Importo Totale'])].copy()
             if not sc.empty:
+                st.subheader("🗓️ Scadenzario")
                 sc['gg'] = (sc['Data Scadenza'] - pd.Timestamp(datetime.now().date())).dt.days
                 sc['Stato'] = sc['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
                 st.dataframe(sc.sort_values('gg')[['Stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
@@ -99,12 +99,7 @@ else:
             with c_p:
                 st.plotly_chart(px.pie(df_r, values='Importo Totale', names='Stanza', hole=0.5), use_container_width=True)
                 if st.button("📄 PDF"):
-                    p = PDF(); p.add_page(); p.set_font('Arial','B',10); p.set_fill_color(46, 117, 182); p.set_text_color(255, 255, 255)
-                    p.cell(30, 10, 'Stanza', 1, 0, 'C', 1); p.cell(90, 10, 'Articolo', 1, 0, 'C', 1); p.cell(35, 10, 'Totale', 1, 0, 'C', 1); p.cell(35, 10, 'Versato', 1, 1, 'C', 1)
-                    p.set_font('Arial', '', 9); p.set_text_color(0, 0, 0)
-                    for _, r in df_r.iterrows():
-                        y=p.get_y(); p.set_xy(40,y); p.multi_cell(90,10,str(r['DV']).encode('latin-1','replace').decode('latin-1'),1); h=max(p.get_y()-y,10)
-                        p.set_xy(10,y); p.cell(30,h,str(r['Stanza']),1); p.set_xy(130,y); p.cell(35,h,f"{r['Importo Totale']:,.2f}",1); p.cell(35,h,f"{r['Versato']:,.2f}",1,1)
+                    p = PDF(); p.add_page(); p.set_font('Arial', 'B', 10)
                     st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
             c_t.dataframe(df_r[['Stanza','DV','Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
@@ -112,19 +107,39 @@ else:
         sn = sel.replace("📦 ", "").lower(); st.title(f"🏠 {sn.capitalize()}")
         try:
             df = clean_df(conn.read(worksheet=sn, ttl="0"))
+
+            if 'Stanza Chiusa' not in df.columns: df['Stanza Chiusa'] = "FALSE"
+            is_closed = str(df.at[0, 'Stanza Chiusa']).upper() == "TRUE"
+
+            head1, head2 = st.columns([3, 1])
+            with head2:
+                new_status = st.toggle("🔒 Chiudi Stanza", value=is_closed, key=f"tog_{sn}")
+                if new_status != is_closed:
+                    df['Stanza Chiusa'] = "TRUE" if new_status else "FALSE"
+                    conn.update(worksheet=sn, data=df.fillna('')); st.rerun()
+
+            if new_status:
+                st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è stata ufficialmente completata!</div>', unsafe_allow_html=True)
+
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
             col_t1, col_t2 = st.columns(2)
             col_t1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value-mini">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
             col_t2.markdown(f'<div class="metric-card">PAGATO STANZA<div class="metric-value-mini">{t_ver:,.2f}€</div></div>', unsafe_allow_html=True)
 
             c_st, c_sn = ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'), ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N')
-            da_acq = df[df[c_sn].str.upper().str.strip() == 'S']
-            if not da_acq.empty and all(str(x).strip() == "Saldato" for x in da_acq[c_st]):
-                st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è stata ufficialmente completata!</div>', unsafe_allow_html=True)
 
             with st.form(f"f_{sn}"):
-                cfg = {c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]), c_st: st.column_config.SelectboxColumn(c_st, options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc Drive", display_text="Apri")}
-                df_e = st.data_editor(df.drop(columns=['DV']), use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
+                # Mostriamo Stanza Chiusa nell'editor come richiesto
+                cols_to_show = [c for c in df.columns if c not in ['DV']]
+                cfg = {
+                    c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]),
+                    c_st: st.column_config.SelectboxColumn(c_st, options=["", "Acconto", "Saldato", "Preventivo"]),
+                    "Stanza Chiusa": st.column_config.SelectboxColumn("Stanza Chiusa", options=["TRUE", "FALSE"]),
+                    "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"),
+                    "Link Fattura": st.column_config.LinkColumn("📂 Doc Drive", display_text="Apri")
+                }
+                df_e = st.data_editor(df[cols_to_show], use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
+
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     for i in range(len(df_e)):
                         try:
@@ -138,7 +153,7 @@ else:
                                 df_e.at[df_e.index[i],'Versato'] = 0.0
                         except: continue
                     conn.update(worksheet=sn, data=df_e.fillna('')); st.cache_data.clear()
-                    st.success(f"Dati {sn.capitalize()} salvati correttamente!"); st.balloons(); time.sleep(1); st.rerun()
+                    st.success(f"Dati {sn.capitalize()} salvati!"); st.balloons(); time.sleep(1); st.rerun()
 
             st.markdown("---")
             st.subheader("🏁 Checklist Fine Lavori")
@@ -148,15 +163,12 @@ else:
                     df_c = pd.concat([df_c, pd.DataFrame([{'Stanza': sn, 'Montaggio': False, 'Integrita': False, 'Pulizia': False}])], ignore_index=True)
                 idx_c = df_c[df_c['Stanza'] == sn].index[0]
                 ch1, ch2, ch3 = st.columns(3)
-                v1 = ch1.checkbox("Montaggio OK", value=bool(df_c.at[idx_c, 'Montaggio']), key=f"c1_{sn}")
-                v2 = ch2.checkbox("Integrità", value=bool(df_c.at[idx_c, 'Integrita']), key=f"c2_{sn}")
-                v3 = ch3.checkbox("Pulizia", value=bool(df_c.at[idx_c, 'Pulizia']), key=f"c3_{sn}")
+                v1, v2, v3 = ch1.checkbox("Montaggio OK", value=bool(df_c.at[idx_c, 'Montaggio']), key=f"c1_{sn}"), ch2.checkbox("Integrità", value=bool(df_c.at[idx_c, 'Integrita']), key=f"c2_{sn}"), ch3.checkbox("Pulizia", value=bool(df_c.at[idx_c, 'Pulizia']), key=f"c3_{sn}")
                 if st.button(f"Aggiorna Checklist {sn.capitalize()}"):
                     df_c.at[idx_c, 'Montaggio'], df_c.at[idx_c, 'Integrita'], df_c.at[idx_c, 'Pulizia'] = v1, v2, v3
-                    conn.update(worksheet="collaudi", data=df_c)
-                    st.success("Stato collaudo aggiornato!"); st.balloons(); time.sleep(1); st.rerun()
-            except: st.warning("Configura il foglio 'collaudi' su Sheets.")
-        except Exception as e: st.error(f"Errore caricamento stanza: {e}")
+                    conn.update(worksheet="collaudi", data=df_c); st.success("Checklist salvata!"); st.balloons(); time.sleep(1); st.rerun()
+            except: st.warning("Foglio 'collaudi' non trovato.")
+        except Exception as e: st.error(f"Errore: {e}")
 
     elif "✨" in sel:
         st.title("✨ Wishlist")
@@ -166,5 +178,5 @@ else:
             df_ew = st.data_editor(df_w.drop(columns=['DV']), use_container_width=True, hide_index=True, column_config=w_cfg, num_rows="dynamic" if edit_struct else "fixed")
             if st.button("Salva Wishlist"):
                 conn.update(worksheet="desideri", data=df_ew.fillna('')); st.cache_data.clear()
-                st.success("✨ Wishlist aggiornata con successo!"); st.balloons(); time.sleep(1); st.rerun()
-        except Exception as e: st.error(f"Errore Wishlist: {e}")
+                st.success("✨ Wishlist aggiornata!"); st.balloons(); time.sleep(1); st.rerun()
+        except Exception as e: st.error(f"Errore: {e}")
