@@ -10,7 +10,7 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.4", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.5", layout="wide", page_icon="🏆")
 
 # --- [BLINDATO: STILE E CSS] ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -26,7 +26,7 @@ st.markdown(f"""<style>
     .gold-seal {{background: linear-gradient(145deg, #ffdf00, #d4af37); padding: 20px; border-radius: 15px; text-align: center; color: black; font-weight: bold; border: 2px solid #b8860b; margin: 20px 0; box-shadow: 0px 4px 15px rgba(212, 175, 55, 0.4);}}
 </style>""", unsafe_allow_html=True)
 
-# --- [BLINDATO: CLASSI E FUNZIONI CORE] ---
+# --- [BLINDATO: FUNZIONI CORE] ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(46, 117, 182); self.rect(0, 0, 210, 40, 'F')
@@ -49,7 +49,7 @@ def clean_df(df):
     if 'Data Scadenza' in df.columns: df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
     return df
 
-# --- [LOGICA DI ACCESSO] ---
+# --- [ACCESSO] ---
 if "password_correct" not in st.session_state:
     st.title("🔒 Accesso")
     u, p = st.text_input("User"), st.text_input("Pass", type="password")
@@ -66,8 +66,8 @@ else:
         sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze])
         edit_struct = st.toggle("⚙️ Modifica Struttura", False)
         st.markdown("<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
+        if st.button("Logout 🚪"): st.session_state.clear(); st.rerun()
 
-    # --- [BLINDATO: RIEPILOGO E GRAFICI] ---
     if "Riepilogo" in sel:
         st.markdown('<div class="main-header"><h1>Command Center 🏆</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
         try: bud = pd.to_numeric(conn.read(worksheet="Impostazioni", ttl="5m").iloc[0,1], errors='coerce')
@@ -108,75 +108,60 @@ else:
                     st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
             c_t.dataframe(df_r[['Stanza','DV','Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
-    # --- [MODULO: GESTIONE STANZE] ---
     elif "📦" in sel:
         sn = sel.replace("📦 ", "").lower(); st.title(f"🏠 {sn.capitalize()}")
         try:
             df = clean_df(conn.read(worksheet=sn, ttl="0"))
-
-            # Totali Stanza
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
             col_t1, col_t2 = st.columns(2)
             col_t1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value-mini">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
             col_t2.markdown(f'<div class="metric-card">PAGATO STANZA<div class="metric-value-mini">{t_ver:,.2f}€</div></div>', unsafe_allow_html=True)
 
-            # Sigillo Oro
-            c_st = ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato')
-            c_sn = ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N')
-            da_acquistare = df[df[c_sn].str.upper().str.strip() == 'S']
-            if not da_acquistare.empty and all(str(x).strip() == "Saldato" for x in da_acquistare[c_st]):
+            c_st, c_sn = ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'), ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N')
+            da_acq = df[df[c_sn].str.upper().str.strip() == 'S']
+            if not da_acq.empty and all(str(x).strip() == "Saldato" for x in da_acq[c_st]):
                 st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è stata ufficialmente completata!</div>', unsafe_allow_html=True)
 
             with st.form(f"f_{sn}"):
                 cfg = {c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]), c_st: st.column_config.SelectboxColumn(c_st, options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc Drive", display_text="Apri")}
                 df_e = st.data_editor(df.drop(columns=['DV']), use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
-
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     for i in range(len(df_e)):
                         try:
                             r = df_e.iloc[i]; p, s, q = float(r.get('Prezzo Pieno',0)), float(r.get('Sconto %',0)), float(r.get('Acquistato',1))
                             c = p * (1-(s/100)) if p>0 else float(r.get('Costo',0))
-                            df_e.at[df_e.index[i],'Costo'] = c; df_e.at[df_e.index[i],'Importo Totale'] = c*q
-
-                            # Logica Reset/Pareggio
+                            df_e.at[df_e.index[i],'Costo'], df_e.at[df_e.index[i],'Importo Totale'] = c, c*q
                             stato = str(r.get(c_st,'')).strip()
                             if stato == "Saldato":
-                                df_e.at[df_e.index[i],'Versato'] = c*q
-                                df_e.at[df_e.index[i],'Data Scadenza'] = pd.NaT
+                                df_e.at[df_e.index[i],'Versato'], df_e.at[df_e.index[i],'Data Scadenza'] = c*q, pd.NaT
                             elif (not stato or stato == "") and df_e.at[df_e.index[i],'Versato'] == df_e.at[df_e.index[i],'Importo Totale']:
                                 df_e.at[df_e.index[i],'Versato'] = 0.0
                         except: continue
                     conn.update(worksheet=sn, data=df_e.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
 
-            # Checklist Persistente
             st.markdown("---")
             st.subheader("🏁 Checklist Fine Lavori")
             try:
                 df_c = conn.read(worksheet="collaudi", ttl="5m")
                 if sn not in df_c['Stanza'].values:
-                    new_row = pd.DataFrame([{'Stanza': sn, 'Montaggio': False, 'Integrita': False, 'Pulizia': False}])
-                    df_c = pd.concat([df_c, new_row], ignore_index=True)
+                    df_c = pd.concat([df_c, pd.DataFrame([{'Stanza': sn, 'Montaggio': False, 'Integrita': False, 'Pulizia': False}])], ignore_index=True)
                 idx_c = df_c[df_c['Stanza'] == sn].index[0]
-                c1, c2, c3 = st.columns(3)
-                v1 = c1.checkbox(f"Montaggio OK", value=bool(df_c.at[idx_c, 'Montaggio']), key=f"c1_{sn}")
-                v2 = c2.checkbox("Integrità", value=bool(df_c.at[idx_c, 'Integrita']), key=f"c2_{sn}")
-                v3 = c3.checkbox("Pulizia", value=bool(df_c.at[idx_c, 'Pulizia']), key=f"c3_{sn}")
+                ch1, ch2, ch3 = st.columns(3)
+                v1 = ch1.checkbox("Montaggio OK", value=bool(df_c.at[idx_c, 'Montaggio']), key=f"c1_{sn}")
+                v2 = ch2.checkbox("Integrità", value=bool(df_c.at[idx_c, 'Integrita']), key=f"c2_{sn}")
+                v3 = ch3.checkbox("Pulizia", value=bool(df_c.at[idx_c, 'Pulizia']), key=f"c3_{sn}")
                 if st.button(f"Aggiorna Checklist {sn.capitalize()}"):
                     df_c.at[idx_c, 'Montaggio'], df_c.at[idx_c, 'Integrita'], df_c.at[idx_c, 'Pulizia'] = v1, v2, v3
                     conn.update(worksheet="collaudi", data=df_c); st.success("Checklist salvata!"); st.rerun()
-            except: st.warning("Foglio 'collaudi' non pronto.")
+            except: st.warning("Configura il foglio 'collaudi' su Sheets.")
+        except Exception as e: st.error(f"Errore caricamento stanza: {e}")
 
-    # --- [BLINDATO: WISHLIST CON PULSANTI RIPRISTINATI] ---
     elif "✨" in sel:
         st.title("✨ Wishlist")
         try:
             df_w = clean_df(conn.read(worksheet="desideri", ttl="0"))
-            # Configurazione blindata per i pulsanti Link e Foto
-            w_cfg = {
-                "Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri Sito"),
-                "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi Foto")
-            }
+            w_cfg = {"Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri Sito"), "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi Foto")}
             df_ew = st.data_editor(df_w.drop(columns=['DV']), use_container_width=True, hide_index=True, column_config=w_cfg, num_rows="dynamic" if edit_struct else "fixed")
             if st.button("Salva Wishlist"):
                 conn.update(worksheet="desideri", data=df_ew.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
-        except Exception as e: st.error(f"⚠️ Errore: {e}")
+        except Exception as e: st.error(f"Errore Wishlist: {e}")
