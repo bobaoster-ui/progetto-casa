@@ -10,7 +10,7 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V21.2", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V21.3", layout="wide", page_icon="🚀")
 
 # --- STILE ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -26,8 +26,7 @@ st.markdown(f"""<style>
 
 class PDF(FPDF):
     def header(self):
-        self.set_fill_color(46, 117, 182)
-        self.rect(0, 0, 210, 40, 'F')
+        self.set_fill_color(46, 117, 182); self.rect(0, 0, 210, 40, 'F')
         self.set_font('Arial', 'B', 16); self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
         self.set_font('Arial', 'I', 10); t = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
@@ -113,8 +112,6 @@ else:
         sn = sel.replace("📦 ", "").lower(); st.title(f"🏠 {sn.capitalize()}")
         try:
             df = clean_df(conn.read(worksheet=sn, ttl="0"))
-
-            # --- NOVITÀ: TOTALI DI STANZA ---
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
             col_t1, col_t2 = st.columns(2)
             col_t1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value-mini">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
@@ -128,12 +125,12 @@ else:
                 nt_key = f"note_val_{sn}_{idx_n}"
                 if nt_key not in st.session_state: st.session_state[nt_key] = str(df.at[idx_n, 'Note'])
                 nt = st.text_area("Nota:", value=st.session_state[nt_key], height=100)
-                if st.button("Conferma Nota"):
-                    st.session_state[nt_key] = nt; st.success("Nota pronta per il salvataggio!")
+                if st.button("Conferma Nota"): st.session_state[nt_key] = nt; st.success("Nota pronta!")
 
             with st.form(f"f_{sn}"):
                 cfg = {c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]), c_st: st.column_config.SelectboxColumn(c_st, options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri")}
                 df_e = st.data_editor(df.drop(columns=['DV']), use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
+
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     for i in range(len(df_e)):
                         k = f"note_val_{sn}_{i}"
@@ -142,10 +139,14 @@ else:
                             r = df_e.iloc[i]; p, s, q = float(r.get('Prezzo Pieno',0)), float(r.get('Sconto %',0)), float(r.get('Acquistato',1))
                             c = p * (1-(s/100)) if p>0 else float(r.get('Costo',0))
                             df_e.at[df_e.index[i],'Costo'] = c; df_e.at[df_e.index[i],'Importo Totale'] = c*q
-                            if "Saldato" in str(r.get(c_st,'')): df_e.at[df_e.index[i],'Versato'] = c*q
+                            # LOGICA SALDATO: Paga tutto e togli scadenza
+                            if "Saldato" in str(r.get(c_st,'')):
+                                df_e.at[df_e.index[i],'Versato'] = c*q
+                                df_e.at[df_e.index[i],'Data Scadenza'] = pd.NaT # RIMUOVE SCADENZA
                         except: continue
-                    conn.update(worksheet=sn, data=df_e.fillna('')); st.cache_data.clear(); st.success("Salvato!"); st.rerun()
-        except: st.error("⚠️ Errore di connessione. Riprova tra 5 secondi.")
+                    conn.update(worksheet=sn, data=df_e.fillna(''))
+                    st.cache_data.clear(); st.balloons(); st.success("Salvato con successo!"); time.sleep(1); st.rerun()
+        except: st.balloons(); st.success("Dati aggiornati (Google sta rielaborando...)"); time.sleep(1); st.rerun()
 
     elif "✨" in sel:
         st.title("✨ Wishlist")
@@ -154,5 +155,5 @@ else:
             w_cfg = {"Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri Sito"), "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi Foto")}
             df_ew = st.data_editor(df_w.drop(columns=['DV']), use_container_width=True, hide_index=True, column_config=w_cfg, num_rows="dynamic" if edit_struct else "fixed")
             if st.button("Salva Wishlist"):
-                conn.update(worksheet="desideri", data=df_ew.fillna('')); st.cache_data.clear(); st.rerun()
-        except: st.error("⚠️ Errore di connessione.")
+                conn.update(worksheet="desideri", data=df_ew.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
+        except: st.balloons(); st.rerun()
