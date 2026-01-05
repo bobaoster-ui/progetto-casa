@@ -10,7 +10,7 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.9", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.9.1", layout="wide", page_icon="🏆")
 
 # --- [BLINDATO: STILE E CSS] ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -114,10 +114,12 @@ else:
         sn = sel.replace("📦 ", "").lower(); st.title(f"🏠 {sn.capitalize()}")
         try:
             df = clean_df(conn.read(worksheet=sn, ttl="0"))
-            if 'Stanza Chiusa' not in df.columns: df['Stanza Chiusa'] = "FALSE"
 
-            # Controllo stato iniziale per visualizzare il sigillo
-            is_currently_closed = str(df.at[0, 'Stanza Chiusa']).upper() == "TRUE"
+            # LOGICA DI LETTURA CORRETTA: controlla se esiste il flag TRUE in qualsiasi riga
+            is_currently_closed = False
+            if 'Stanza Chiusa' in df.columns:
+                is_currently_closed = any(df['Stanza Chiusa'].astype(str).str.upper() == "TRUE")
+
             if is_currently_closed:
                 st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è stata ufficialmente completata!</div>', unsafe_allow_html=True)
 
@@ -128,10 +130,9 @@ else:
 
             c_st, c_sn = ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'), ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N')
 
-            # --- FORM UNIFICATO PER EVITARE OFFUSCAMENTI ---
             with st.form(f"f_{sn}"):
                 st.markdown("##### ⚙️ Gestione Dati e Stato")
-                # Spostiamo il toggle qui dentro: non causerà offuscamento perché il form non invia dati finché non premi il tasto
+                # Ora il checkbox riflette fedelmente lo stato di Sheets
                 check_chiusura = st.checkbox("🔒 Segna stanza come COMPLETATA (Attiva Sigillo Oro)", value=is_currently_closed)
 
                 cols_to_show = [c for c in df.columns if c not in ['DV', 'Stanza Chiusa']]
@@ -139,6 +140,7 @@ else:
                 df_e = st.data_editor(df[cols_to_show], use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
 
                 if st.form_submit_button("💾 SALVA TUTTO (Dati + Stato Chiusura)"):
+                    # Salviamo il flag su tutte le righe per coerenza
                     df_e['Stanza Chiusa'] = "TRUE" if check_chiusura else "FALSE"
                     for i in range(len(df_e)):
                         try:
@@ -152,7 +154,7 @@ else:
                                 df_e.at[df_e.index[i],'Versato'] = 0.0
                         except: continue
                     conn.update(worksheet=sn, data=df_e.fillna('')); st.cache_data.clear()
-                    st.success(f"Proprietà aggiornata!"); st.balloons(); time.sleep(1); st.rerun()
+                    st.success(f"Proprietà Jacopo aggiornata!"); st.balloons(); time.sleep(1); st.rerun()
 
             st.markdown("---")
             st.subheader("🏁 Checklist Fine Lavori")
