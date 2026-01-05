@@ -40,13 +40,13 @@ def clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
 
-    # --- FIX CHIRURGICO PER LA PERSISTENZA ---
+    # --- FIX DEFINITIVO PER LETTURA BOOLEANA/NUMERICA ---
     if 'Stanza Chiusa' in df.columns:
-        # Trasforma i "TRUE" di Sheets in veri valori Booleani che Streamlit capisce
-        df['Stanza Chiusa'] = df['Stanza Chiusa'].astype(str).str.upper().str.strip()
+        # Converte 1, 1.0, "TRUE", "true" tutto in Booleano reale
+        df['Stanza Chiusa'] = df['Stanza Chiusa'].apply(lambda x: str(x).upper().strip() in ['TRUE', '1', '1.0'])
     else:
-        df['Stanza Chiusa'] = "FALSE"
-    # -----------------------------------------
+        df['Stanza Chiusa'] = False
+    # ----------------------------------------------------
 
     df['DV'] = df['Articolo'] if 'Articolo' in df.columns else df.get('Oggetto', 'N/A')
 
@@ -60,7 +60,6 @@ def clean_df(df):
         df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
 
     return df
-
 
 if "password_correct" not in st.session_state:
     st.title("🔒 Accesso")
