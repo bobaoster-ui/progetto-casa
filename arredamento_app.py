@@ -10,7 +10,7 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.9.1", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.9.2", layout="wide", page_icon="🏆")
 
 # --- [BLINDATO: STILE E CSS] ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -115,10 +115,10 @@ else:
         try:
             df = clean_df(conn.read(worksheet=sn, ttl="0"))
 
-            # LOGICA DI LETTURA CORRETTA: controlla se esiste il flag TRUE in qualsiasi riga
+            # Lettura ultra-resistente dello stato "Chiusa"
             is_currently_closed = False
             if 'Stanza Chiusa' in df.columns:
-                is_currently_closed = any(df['Stanza Chiusa'].astype(str).str.upper() == "TRUE")
+                is_currently_closed = df['Stanza Chiusa'].astype(str).str.strip().str.upper().eq("TRUE").any()
 
             if is_currently_closed:
                 st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è stata ufficialmente completata!</div>', unsafe_allow_html=True)
@@ -132,15 +132,12 @@ else:
 
             with st.form(f"f_{sn}"):
                 st.markdown("##### ⚙️ Gestione Dati e Stato")
-                # Ora il checkbox riflette fedelmente lo stato di Sheets
                 check_chiusura = st.checkbox("🔒 Segna stanza come COMPLETATA (Attiva Sigillo Oro)", value=is_currently_closed)
-
                 cols_to_show = [c for c in df.columns if c not in ['DV', 'Stanza Chiusa']]
                 cfg = {c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]), c_st: st.column_config.SelectboxColumn(c_st, options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc Drive", display_text="Apri")}
                 df_e = st.data_editor(df[cols_to_show], use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
 
                 if st.form_submit_button("💾 SALVA TUTTO (Dati + Stato Chiusura)"):
-                    # Salviamo il flag su tutte le righe per coerenza
                     df_e['Stanza Chiusa'] = "TRUE" if check_chiusura else "FALSE"
                     for i in range(len(df_e)):
                         try:
@@ -159,7 +156,7 @@ else:
             st.markdown("---")
             st.subheader("🏁 Checklist Fine Lavori")
             try:
-                df_c = conn.read(worksheet="collaudi", ttl="5m")
+                df_c = clean_df(conn.read(worksheet="collaudi", ttl="5m"))
                 if sn not in df_c['Stanza'].values:
                     df_c = pd.concat([df_c, pd.DataFrame([{'Stanza': sn, 'Montaggio': False, 'Integrita': False, 'Pulizia': False}])], ignore_index=True)
                 idx_c = df_c[df_c['Stanza'] == sn].index[0]
@@ -168,7 +165,7 @@ else:
                 if st.button(f"Aggiorna Checklist {sn.capitalize()}"):
                     df_c.at[idx_c, 'Montaggio'], df_c.at[idx_c, 'Integrita'], df_c.at[idx_c, 'Pulizia'] = v1, v2, v3
                     conn.update(worksheet="collaudi", data=df_c); st.success("Checklist salvata!"); st.balloons(); time.sleep(1); st.rerun()
-            except: st.warning("Foglio collaudi non pronto.")
+            except: st.warning("Configura il foglio collaudi.")
         except Exception as e: st.error(f"Errore: {e}")
 
     elif "✨" in sel:
