@@ -10,7 +10,7 @@ import io
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V31.0", layout="wide", page_icon="💎")
+st.set_page_config(page_title="Monitoraggio Arredamento V31.1", layout="wide", page_icon="💎")
 
 @st.cache_resource
 def init_connection():
@@ -18,7 +18,21 @@ def init_connection():
 
 supabase = init_connection()
 
-# --- STILE ---
+# --- CLASSE PDF ELEGANTE (RIPRISTINATA) ---
+class PDF(FPDF):
+    def header(self):
+        # Rettangolo Blu Testata
+        self.set_fill_color(46, 117, 182)
+        self.rect(0, 0, 210, 40, 'F')
+        self.set_font('Helvetica', 'B', 16)
+        self.set_text_color(255, 255, 255)
+        self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
+        self.set_font('Helvetica', 'I', 10)
+        t = f'Proprieta: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
+        self.cell(0, 10, t, ln=True, align='C')
+        self.ln(20)
+
+# --- STILE DASHBOARD ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
 bc, cc, tc = ("#0e1117", "#1d2129", "#ffffff") if st.session_state.dark_mode else ("#f8f9fc", "#ffffff", "#1f2937")
 grad = "linear-gradient(90deg, #0f2027, #203a43, #2c5364)" if st.session_state.dark_mode else "linear-gradient(90deg, #2e5a88, #4a90e2)"
@@ -43,13 +57,10 @@ else:
         st.session_state.dark_mode = st.toggle("🌙 Notte", st.session_state.dark_mode)
         sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s}" for s in stanze_fisiche])
 
-        # --- FIX BUDGET PERSISTENTE ---
-        # Cerchiamo il budget nel database (nella stanza fittizia 'Impostazioni')
+        # Gestione Budget
         res_b = supabase.table("arredamento").select("importo_totale").eq("stanza", "Impostazioni").eq("articolo", "Budget_Totale").execute()
         current_b = res_b.data[0]['importo_totale'] if res_b.data else 15000.0
-
         new_budget = st.number_input("Budget Obiettivo (€)", value=float(current_b), step=500.0)
-
         if new_budget != current_b:
             supabase.table("arredamento").delete().eq("stanza", "Impostazioni").eq("articolo", "Budget_Totale").execute()
             supabase.table("arredamento").insert({"stanza": "Impostazioni", "articolo": "Budget_Totale", "importo_totale": new_budget}).execute()
@@ -78,26 +89,33 @@ else:
             m2.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m3.markdown(f'<div class="metric-card">DA PAGARE<div class="metric-value">{conf-pag:,.0f}€</div></div>', unsafe_allow_html=True)
 
-            # --- FIX PDF DEFINITIVO ---
-            if st.button("📑 Genera Report PDF"):
-                try:
-                    pdf = FPDF()
-                    pdf.add_page()
-                    pdf.set_font("Helvetica", "B", 16)
-                    pdf.cell(0, 10, "Report Proprieta: Jacopo", ln=True, align='C')
-                    pdf.set_font("Helvetica", size=12)
-                    pdf.ln(10)
-                    pdf.cell(0, 10, f"Totale Impegnato: {conf:,.2f} EUR", ln=True)
-                    pdf.cell(0, 10, f"Totale Pagato: {pag:,.2f} EUR", ln=True)
-                    pdf.cell(0, 10, f"Residuo: {conf-pag:,.2f} EUR", ln=True)
+            c1, c2 = st.columns([1, 1.2])
+            with c1:
+                st.plotly_chart(px.pie(df_real, values='importo_totale', names='stanza', hole=0.5), use_container_width=True)
+            with c2:
+                # --- SCADENZARIO RIPRISTINATO ---
+                st.subheader("🗓️ Scadenzario")
+                sc = df_real[df_real['scadenza'].notna() & (df_real['versato'] < df_real['importo_totale'])].copy()
+                if not sc.empty:
+                    sc['gg'] = (sc['scadenza'] - datetime.now().date()).apply(lambda x: x.days)
+                    sc['Stato'] = sc['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
+                    st.dataframe(sc.sort_values('gg')[['stanza','articolo','scadenza','Stato']], use_container_width=True, hide_index=True)
+                else:
+                    st.write("✅ Nessun pagamento in scadenza")
 
-                    # Generazione corretta in formato bytes per Streamlit
-                    pdf_bytes = pdf.output()
-                    st.download_button(label="📥 Scarica Report PDF", data=bytes(pdf_bytes), file_name="Report_Jacopo.pdf", mime="application/pdf")
-                except Exception as e:
-                    st.error(f"Errore tecnico PDF: {e}")
+            if st.button("📑 Genera Report PDF Professionale"):
+                pdf = PDF()
+                pdf.add_page()
+                pdf.set_text_color(31, 41, 55)
+                pdf.set_font('Helvetica', 'B', 12)
+                pdf.cell(0, 10, f"Riepilogo Finanziario:", ln=True)
+                pdf.set_font('Helvetica', '', 12)
+                pdf.cell(0, 8, f"- Totale Impegnato: {conf:,.2f} EUR", ln=True)
+                pdf.cell(0, 8, f"- Totale Versato: {pag:,.2f} EUR", ln=True)
+                pdf.cell(0, 8, f"- Residuo da Pagare: {conf-pag:,.2f} EUR", ln=True)
 
-            st.plotly_chart(px.pie(df_real, values='importo_totale', names='stanza', hole=0.5), use_container_width=True)
+                # Buffer per il download
+                st.download_button("📥 Scarica Report PDF", pdf.output(), "Report_Arredamento_Jacopo.pdf", "application/pdf")
 
     elif "📦" in sel:
         sn = sel.replace("📦 ", "")
