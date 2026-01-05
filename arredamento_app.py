@@ -10,9 +10,9 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.0", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.1", layout="wide", page_icon="🏆")
 
-# --- STILE ORIGINALE RIPRISTINATO ---
+# --- STILE ORIGINALE RIPRISTINATO + ORO ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
 bc, cc, tc = ("#0e1117", "#1d2129", "#ffffff") if st.session_state.dark_mode else ("#f8f9fc", "#ffffff", "#1f2937")
 grad = "linear-gradient(90deg, #0f2027, #203a43, #2c5364)" if st.session_state.dark_mode else "linear-gradient(90deg, #2e5a88, #4a90e2)"
@@ -22,9 +22,8 @@ st.markdown(f"""<style>
     .main-header {{background: {grad}; padding: 30px; border-radius: 15px; color: white; margin-bottom: 25px;}}
     .metric-card {{background-color: {cc}; padding: 20px; border-radius: 12px; border-bottom: 5px solid #2e5a88; text-align: center; color: {tc};}}
     .metric-value {{font-size: 1.8em; font-weight: 800; color: #2e5a88;}}
-    .metric-value-mini {{font-size: 1.4em; font-weight: 700; color: #2e5a88;}}
-    /* Novità Oro */
-    .gold-seal {{background: linear-gradient(145deg, #ffdf00, #d4af37); padding: 20px; border-radius: 15px; text-align: center; color: black; font-weight: bold; border: 2px solid #b8860b; margin: 20px 0;}}
+    .metric-value-mini {{font-size: 1.4em; font-weight: 700; color: #d4af37;}}
+    .gold-seal {{background: linear-gradient(145deg, #ffdf00, #d4af37); padding: 20px; border-radius: 15px; text-align: center; color: black; font-weight: bold; border: 2px solid #b8860b; margin: 20px 0; box-shadow: 0px 4px 15px rgba(212, 175, 55, 0.4);}}
 </style>""", unsafe_allow_html=True)
 
 class PDF(FPDF):
@@ -116,16 +115,17 @@ else:
         try:
             df = clean_df(conn.read(worksheet=sn, ttl="0"))
 
-            # TOTALI DI STANZA (RIPRISTINATI)
+            # TOTALI DI STANZA
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
             col_t1, col_t2 = st.columns(2)
             col_t1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value-mini">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
             col_t2.markdown(f'<div class="metric-card">PAGATO STANZA<div class="metric-value-mini">{t_ver:,.2f}€</div></div>', unsafe_allow_html=True)
 
-            # SIGILLO ORO (MODULO NUOVO)
+            # --- LOGICA SIGILLO ORO (CORRETTA V22.1) ---
             c_st = ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato')
             c_sn = ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N')
-            if not df.empty and all(str(x).strip() == "Saldato" for x in df[df[c_sn] == 'S'][c_st]):
+            da_acquistare = df[df[c_sn].str.upper().str.strip() == 'S']
+            if not da_acquistare.empty and all(str(x).strip() == "Saldato" for x in da_acquistare[c_st]):
                 st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è stata ufficialmente completata e saldata!</div>', unsafe_allow_html=True)
 
             with st.expander("📝 NOTE"):
@@ -154,7 +154,6 @@ else:
                         except: continue
                     conn.update(worksheet=sn, data=df_e.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
 
-            # CHECKLIST COLLAUDO (MODULO NUOVO)
             st.markdown("---")
             st.subheader("🏁 Checklist Fine Lavori")
             c1, c2, c3 = st.columns(3)
