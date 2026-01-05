@@ -10,9 +10,9 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.2", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.3", layout="wide", page_icon="🏆")
 
-# --- STILE ORIGINALE + ORO ---
+# --- STILE ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
 bc, cc, tc = ("#0e1117", "#1d2129", "#ffffff") if st.session_state.dark_mode else ("#f8f9fc", "#ffffff", "#1f2937")
 grad = "linear-gradient(90deg, #0f2027, #203a43, #2c5364)" if st.session_state.dark_mode else "linear-gradient(90deg, #2e5a88, #4a90e2)"
@@ -115,13 +115,13 @@ else:
         try:
             df = clean_df(conn.read(worksheet=sn, ttl="0"))
 
-            # TOTALI DI STANZA
+            # TOTALI
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
             col_t1, col_t2 = st.columns(2)
             col_t1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value-mini">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
             col_t2.markdown(f'<div class="metric-card">PAGATO STANZA<div class="metric-value-mini">{t_ver:,.2f}€</div></div>', unsafe_allow_html=True)
 
-            # LOGICA SIGILLO ORO
+            # SIGILLO ORO
             c_st = ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato')
             c_sn = ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N')
             da_acquistare = df[df[c_sn].str.upper().str.strip() == 'S']
@@ -148,13 +148,22 @@ else:
                             r = df_e.iloc[i]; p, s, q = float(r.get('Prezzo Pieno',0)), float(r.get('Sconto %',0)), float(r.get('Acquistato',1))
                             c = p * (1-(s/100)) if p>0 else float(r.get('Costo',0))
                             df_e.at[df_e.index[i],'Costo'] = c; df_e.at[df_e.index[i],'Importo Totale'] = c*q
-                            if "Saldato" in str(r.get(c_st,'')):
+
+                            # NUOVA LOGICA DI PAREGGIO/RESET (V22.3)
+                            stato_corrente = str(r.get(c_st,'')).strip()
+                            acquista_sn = str(r.get(c_sn,'')).strip().upper()
+
+                            if stato_corrente == "Saldato" and acquista_sn == "S":
                                 df_e.at[df_e.index[i],'Versato'] = c*q
                                 df_e.at[df_e.index[i],'Data Scadenza'] = pd.NaT
+                            elif (stato_corrente != "Saldato" or acquista_sn == "N"):
+                                # Se togliamo Saldato o mettiamo N, azzeriamo il versato se prima era uguale al totale
+                                if df_e.at[df_e.index[i],'Versato'] == df_e.at[df_e.index[i],'Importo Totale']:
+                                    df_e.at[df_e.index[i],'Versato'] = 0.0
                         except: continue
                     conn.update(worksheet=sn, data=df_e.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
 
-            # --- CHECKLIST PERSISTENTE (V22.2) ---
+            # CHECKLIST
             st.markdown("---")
             st.subheader("🏁 Checklist Fine Lavori")
             try:
@@ -172,22 +181,18 @@ else:
             v3 = col_ch3.checkbox("Pulizia Finale", value=bool(df_c.at[idx_c, 'Pulizia']), key=f"c3_{sn}")
 
             if st.button(f"Aggiorna Checklist {sn.capitalize()}"):
-                df_c.at[idx_c, 'Montaggio'] = v1
-                df_c.at[idx_c, 'Integrita'] = v2
-                df_c.at[idx_c, 'Pulizia'] = v3
+                df_c.at[idx_c, 'Montaggio'] = v1; df_c.at[idx_c, 'Integrita'] = v2; df_c.at[idx_c, 'Pulizia'] = v3
                 conn.update(worksheet="collaudi", data=df_c)
-                st.success("Checklist salvata su Drive!")
-                time.sleep(1); st.rerun()
+                st.success("Checklist salvata!"); time.sleep(1); st.rerun()
 
-        except Exception as e:
-            st.error(f"⚠️ Errore di connessione o foglio 'collaudi' mancante. Dettagli: {e}")
+        except Exception as e: st.error(f"⚠️ Errore: {e}")
 
     elif "✨" in sel:
         st.title("✨ Wishlist")
         try:
             df_w = clean_df(conn.read(worksheet="desideri", ttl="0"))
-            w_cfg = {"Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri Sito"), "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi Foto")}
+            w_cfg = {"Link": st.column_config.LinkColumn("🔗 Web"), "Foto": st.column_config.LinkColumn("📸 Foto")}
             df_ew = st.data_editor(df_w.drop(columns=['DV']), use_container_width=True, hide_index=True, column_config=w_cfg, num_rows="dynamic" if edit_struct else "fixed")
             if st.button("Salva Wishlist"):
                 conn.update(worksheet="desideri", data=df_ew.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
-        except: st.error("⚠️ Errore di connessione.")
+        except: st.error("⚠️ Errore connessione.")
