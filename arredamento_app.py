@@ -15,7 +15,7 @@ if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = False
 
-st.set_page_config(page_title="Monitoraggio Arredamento V19.3", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V19.4", layout="wide", page_icon="🚀")
 
 if st.session_state.dark_mode:
     bg_color, card_color, text_color = "#0e1117", "#1d2129", "#ffffff"
@@ -57,14 +57,21 @@ def safe_clean_df(df):
     df.columns = [str(c).strip() for c in df.columns]
     if 'Articolo' in df.columns: df['Descrizione_Visualizzata'] = df['Articolo']
     elif 'Oggetto' in df.columns: df['Descrizione_Visualizzata'] = df['Oggetto']
+
     text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']
     for col in text_cols:
         if col in df.columns: df[col] = df[col].astype(str).replace(['None', 'nan', '<NA>', 'undefined', 'null'], '')
+
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
         if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
+
+    # --- CURA DELLE DATE (V19.4) ---
     if 'Data Scadenza' in df.columns:
+        # Trasformiamo e forziamo a rimanere solo data (senza orario)
         df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
+        # Rimuoviamo il 1899 trasformandolo in valore vuoto (NaT)
+        df.loc[df['Data Scadenza'].dt.year < 1950, 'Data Scadenza'] = pd.NaT
     return df
 
 # --- 3. ACCESSO ---
@@ -100,8 +107,7 @@ else:
         potential_cost = 0
         for s in stanze_reali:
             try:
-                df_s_raw = conn.read(worksheet=s, ttl="1m")
-                df_s = safe_clean_df(df_s_raw)
+                df_s = safe_clean_df(conn.read(worksheet=s, ttl="1m"))
                 if not df_s.empty:
                     c_sn = 'Acquista S/N' if 'Acquista S/N' in df_s.columns else 'S/N'
                     df_c = df_s[df_s[c_sn].str.upper().str.strip() == 'S'].copy()
@@ -164,7 +170,8 @@ else:
                         if str(r.get(col_stato, "")).strip() == "Saldato":
                             df_edit.at[df_edit.index[i], 'Versato'] = costo * q
                     except: continue
-                df_edit = df_edit.fillna(0).replace('None', '')
+                # Pulizia finale prima di mandare a Google
+                df_edit = df_edit.fillna('')
                 conn.update(worksheet=stanza_nome, data=df_edit)
                 st.cache_data.clear(); st.balloons(); time.sleep(1); st.rerun()
 
