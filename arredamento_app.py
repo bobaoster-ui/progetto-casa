@@ -10,9 +10,9 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.9.7", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.9.8", layout="wide", page_icon="🏆")
 
-# --- [STILE E CSS PERSONALIZZATO] ---
+# --- [STILE CSS ORIGINALE] ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
 bc, cc, tc = ("#0e1117", "#1d2129", "#ffffff") if st.session_state.dark_mode else ("#f8f9fc", "#ffffff", "#1f2937")
 grad = "linear-gradient(90deg, #0f2027, #203a43, #2c5364)" if st.session_state.dark_mode else "linear-gradient(90deg, #2e5a88, #4a90e2)"
@@ -25,7 +25,7 @@ st.markdown(f"""<style>
     .gold-seal {{background: linear-gradient(145deg, #ffdf00, #d4af37); padding: 20px; border-radius: 15px; text-align: center; color: black; font-weight: bold; border: 2px solid #b8860b; margin: 20px 0; box-shadow: 0px 4px 15px rgba(212, 175, 55, 0.4);}}
 </style>""", unsafe_allow_html=True)
 
-# --- [FUNZIONI PDF E DATI] ---
+# --- [FUNZIONI CORE] ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(46, 117, 182); self.rect(0, 0, 210, 40, 'F')
@@ -44,11 +44,16 @@ def clean_df(df):
         if c in df.columns: df[c] = df[c].astype(str).replace(['None', 'nan', ''], '')
     return df
 
-# --- [LOGICA PRINCIPALE] ---
+# --- [ACCESSO RIPRISTINATO] ---
 if "password_correct" not in st.session_state:
-    st.title("🔒 Accesso Riservato")
-    if st.text_input("Password", type="password") == st.secrets["auth"]["password"]:
-        if st.button("Entra"): st.session_state.password_correct = True; st.rerun()
+    st.title("🔒 Accesso")
+    col1, col2 = st.columns(2)
+    user = col1.text_input("Username")
+    pwd = col2.text_input("Password", type="password")
+    if st.button("Accedi"):
+        if user == st.secrets["auth"]["username"] and pwd == st.secrets["auth"]["password"]:
+            st.session_state.password_correct = True; st.rerun()
+        else: st.error("Credenziali errate")
 else:
     conn = st.connection("gsheets", type=GSheetsConnection)
     stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
@@ -56,7 +61,7 @@ else:
     with st.sidebar:
         st.session_state.dark_mode = st.toggle("🌙 Notte", st.session_state.dark_mode)
         sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze])
-        edit_struct = st.toggle("⚙️ Struttura", False)
+        edit_struct = st.toggle("⚙️ Modifica Struttura", False)
         st.markdown("---")
         st.write("**Proprietà: Jacopo**")
 
@@ -71,53 +76,39 @@ else:
                     temp = d[d[cs].str.upper().str.strip() == 'S'].copy()
                     temp['Stanza'] = s.capitalize(); all_data.append(temp)
             if all_data:
-                full_df = pd.concat(all_data)
+                fdf = pd.concat(all_data)
                 c1, c2, c3 = st.columns(3)
-                c1.markdown(f'<div class="metric-card">CONFERMATO<div class="metric-value">{full_df["Importo Totale"].sum():,.2f}€</div></div>', unsafe_allow_html=True)
-                c2.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{full_df["Versato"].sum():,.2f}€</div></div>', unsafe_allow_html=True)
-                c3.markdown(f'<div class="metric-card">DA PAGARE<div class="metric-value">{full_df["Importo Totale"].sum()-full_df["Versato"].sum():,.2f}€</div></div>', unsafe_allow_html=True)
-
-                if st.button("📄 Genera Report PDF"):
-                    pdf = PDF(); pdf.add_page(); pdf.set_font("Arial", size=10)
-                    for i, r in full_df.iterrows(): pdf.cell(0, 8, f"{r['Stanza']} - {r['DV']}: {r['Importo Totale']}€", ln=True)
-                    st.download_button("📥 Scarica PDF", bytes(pdf.output(dest='S')), "Report_Arredamento.pdf")
-
-                st.plotly_chart(px.pie(full_df, values='Importo Totale', names='Stanza', hole=0.4), use_container_width=True)
-        except Exception as e: st.error(f"Errore caricamento: {e}")
+                c1.markdown(f'<div class="metric-card">CONFERMATO<div class="metric-value">{fdf["Importo Totale"].sum():,.2f}€</div></div>', unsafe_allow_html=True)
+                c2.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{fdf["Versato"].sum():,.2f}€</div></div>', unsafe_allow_html=True)
+                c3.markdown(f'<div class="metric-card">RESTANTE<div class="metric-value">{fdf["Importo Totale"].sum()-fdf["Versato"].sum():,.2f}€</div></div>', unsafe_allow_html=True)
+                st.plotly_chart(px.pie(fdf, values='Importo Totale', names='Stanza', hole=0.4), use_container_width=True)
+        except: st.error("Errore di caricamento dati.")
 
     elif "📦" in sel:
         sn = sel.replace("📦 ", "").lower(); st.title(f"🏠 {sn.capitalize()}")
-        try:
-            df = clean_df(conn.read(worksheet=sn, ttl="0"))
-            is_closed = any(df['Stanza Chiusa'].astype(str).str.upper() == "TRUE") if 'Stanza Chiusa' in df.columns else False
+        df = clean_df(conn.read(worksheet=sn, ttl="0"))
+        is_closed = any(df['Stanza Chiusa'].astype(str).str.upper() == "TRUE") if 'Stanza Chiusa' in df.columns else False
 
-            if is_closed:
-                st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è stata ufficialmente completata!</div>', unsafe_allow_html=True)
+        if is_closed:
+            st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è completata!</div>', unsafe_allow_html=True)
 
-            with st.form(f"f_{sn}"):
-                check_chiusura = st.checkbox("🔒 Stanza Completata (Attiva Sigillo Oro)", value=is_closed)
-                cols_to_show = [c for c in df.columns if c not in ['DV', 'Stanza Chiusa']]
-                df_e = st.data_editor(df[cols_to_show], use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config={
-                    "Link Fattura": st.column_config.LinkColumn("📂 Doc Drive")
-                })
-                if st.form_submit_button("💾 SALVA TUTTO"):
-                    df_e['Stanza Chiusa'] = "TRUE" if check_chiusura else "FALSE"
-                    # Logica calcolo automatico rinvigorita
-                    for i in range(len(df_e)):
-                        p, s, q = float(df_e.iloc[i].get('Prezzo Pieno', 0)), float(df_e.iloc[i].get('Sconto %', 0)), float(df_e.iloc[i].get('Acquistato', 1))
-                        df_e.at[df_e.index[i], 'Importo Totale'] = (p * (1 - s/100)) * q
-                    conn.update(worksheet=sn, data=df_e)
-                    st.cache_data.clear(); st.success("Dati Salvati!"); st.balloons(); time.sleep(1); st.rerun()
-        except Exception as e: st.error(f"Errore: {e}")
+        with st.form(f"form_{sn}"):
+            chiudi = st.checkbox("🔒 Chiudi Stanza (Sigillo)", value=is_closed)
+            show_cols = [c for c in df.columns if c not in ['DV', 'Stanza Chiusa']]
+            df_e = st.data_editor(df[show_cols], use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config={
+                "Link Fattura": st.column_config.LinkColumn("📂 Doc Drive")
+            })
+            if st.form_submit_button("💾 SALVA"):
+                df_e['Stanza Chiusa'] = "TRUE" if chiudi else "FALSE"
+                conn.update(worksheet=sn, data=df_e)
+                st.cache_data.clear(); st.success("Salvato!"); st.rerun()
 
     elif "✨" in sel:
         st.title("✨ Wishlist")
-        try:
-            df_w = clean_df(conn.read(worksheet="desideri", ttl="0"))
-            df_ew = st.data_editor(df_w, use_container_width=True, hide_index=True, column_config={
-                "Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri Sito"),
-                "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Guarda Foto")
-            }, num_rows="dynamic" if edit_struct else "fixed")
-            if st.button("Salva Wishlist"):
-                conn.update(worksheet="desideri", data=df_ew); st.success("Wishlist aggiornata!"); st.rerun()
-        except: st.error("Errore Wishlist")
+        df_w = clean_df(conn.read(worksheet="desideri", ttl="0"))
+        df_ew = st.data_editor(df_w, use_container_width=True, hide_index=True, column_config={
+            "Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri Sito"),
+            "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi Foto")
+        }, num_rows="dynamic" if edit_struct else "fixed")
+        if st.button("Salva Wishlist"):
+            conn.update(worksheet="desideri", data=df_ew); st.success("Aggiornato!"); st.rerun()
