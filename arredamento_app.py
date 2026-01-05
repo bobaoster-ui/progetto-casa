@@ -10,7 +10,7 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.5", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.6", layout="wide", page_icon="🏆")
 
 # --- [BLINDATO: STILE E CSS] ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -99,9 +99,9 @@ else:
             with c_p:
                 st.plotly_chart(px.pie(df_r, values='Importo Totale', names='Stanza', hole=0.5), use_container_width=True)
                 if st.button("📄 PDF"):
-                    p = PDF(); p.add_page(); p.set_font('Arial','B',10); p.set_fill_color(46,117,182); p.set_text_color(255,255,255)
-                    p.cell(30,10,'Stanza',1,0,'C',1); p.cell(90,10,'Articolo',1,0,'C',1); p.cell(35,10,'Totale',1,0,'C',1); p.cell(35,10,'Versato',1,1,'C',1)
-                    p.set_font('Arial','',9); p.set_text_color(0,0,0)
+                    p = PDF(); p.add_page(); p.set_font('Arial','B',10); p.set_fill_color(46, 117, 182); p.set_text_color(255, 255, 255)
+                    p.cell(30, 10, 'Stanza', 1, 0, 'C', 1); p.cell(90, 10, 'Articolo', 1, 0, 'C', 1); p.cell(35, 10, 'Totale', 1, 0, 'C', 1); p.cell(35, 10, 'Versato', 1, 1, 'C', 1)
+                    p.set_font('Arial', '', 9); p.set_text_color(0, 0, 0)
                     for _, r in df_r.iterrows():
                         y=p.get_y(); p.set_xy(40,y); p.multi_cell(90,10,str(r['DV']).encode('latin-1','replace').decode('latin-1'),1); h=max(p.get_y()-y,10)
                         p.set_xy(10,y); p.cell(30,h,str(r['Stanza']),1); p.set_xy(130,y); p.cell(35,h,f"{r['Importo Totale']:,.2f}",1); p.cell(35,h,f"{r['Versato']:,.2f}",1,1)
@@ -137,7 +137,8 @@ else:
                             elif (not stato or stato == "") and df_e.at[df_e.index[i],'Versato'] == df_e.at[df_e.index[i],'Importo Totale']:
                                 df_e.at[df_e.index[i],'Versato'] = 0.0
                         except: continue
-                    conn.update(worksheet=sn, data=df_e.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
+                    conn.update(worksheet=sn, data=df_e.fillna('')); st.cache_data.clear()
+                    st.success(f"Dati {sn.capitalize()} salvati correttamente!"); st.balloons(); time.sleep(1); st.rerun()
 
             st.markdown("---")
             st.subheader("🏁 Checklist Fine Lavori")
@@ -152,7 +153,8 @@ else:
                 v3 = ch3.checkbox("Pulizia", value=bool(df_c.at[idx_c, 'Pulizia']), key=f"c3_{sn}")
                 if st.button(f"Aggiorna Checklist {sn.capitalize()}"):
                     df_c.at[idx_c, 'Montaggio'], df_c.at[idx_c, 'Integrita'], df_c.at[idx_c, 'Pulizia'] = v1, v2, v3
-                    conn.update(worksheet="collaudi", data=df_c); st.success("Checklist salvata!"); st.rerun()
+                    conn.update(worksheet="collaudi", data=df_c)
+                    st.success("Stato collaudo aggiornato!"); st.balloons(); time.sleep(1); st.rerun()
             except: st.warning("Configura il foglio 'collaudi' su Sheets.")
         except Exception as e: st.error(f"Errore caricamento stanza: {e}")
 
@@ -163,5 +165,6 @@ else:
             w_cfg = {"Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri Sito"), "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi Foto")}
             df_ew = st.data_editor(df_w.drop(columns=['DV']), use_container_width=True, hide_index=True, column_config=w_cfg, num_rows="dynamic" if edit_struct else "fixed")
             if st.button("Salva Wishlist"):
-                conn.update(worksheet="desideri", data=df_ew.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
+                conn.update(worksheet="desideri", data=df_ew.fillna('')); st.cache_data.clear()
+                st.success("✨ Wishlist aggiornata con successo!"); st.balloons(); time.sleep(1); st.rerun()
         except Exception as e: st.error(f"Errore Wishlist: {e}")
