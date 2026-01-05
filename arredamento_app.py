@@ -12,9 +12,8 @@ if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
 
 # --- 2. CONFIGURAZIONE PAGINA ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
-st.set_page_config(page_title="Monitoraggio Arredamento V20.5", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V20.6", layout="wide", page_icon="🚀")
 
-# Stili CSS - Ripristinati integrali
 bc, cc, tc = ("#0e1117", "#1d2129", "#ffffff") if st.session_state.dark_mode else ("#f8f9fc", "#ffffff", "#1f2937")
 grad = "linear-gradient(90deg, #0f2027, #203a43, #2c5364)" if st.session_state.dark_mode else "linear-gradient(90deg, #2e5a88, #4a90e2)"
 
@@ -27,12 +26,11 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-# --- PDF - RIPRISTINO COLORI E TITOLI ---
 COLOR_AZZURRO = (46, 117, 182)
 
 class PDF(FPDF):
     def header(self):
-        self.set_fill_color(*COLOR_AZZURRO) # Titoli in Blu ripristinati
+        self.set_fill_color(*COLOR_AZZURRO)
         self.rect(0, 0, 210, 40, 'F')
         self.set_font('Arial', 'B', 16); self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
@@ -42,7 +40,6 @@ class PDF(FPDF):
         self.ln(15)
     def footer(self):
         self.set_y(-15); self.set_font('Arial', 'I', 8); self.set_text_color(128, 128, 128)
-        # NOMI RIPRISTINATI
         firma = "Prodotto di Proprietà: Roberto & Gemini"
         self.cell(0, 10, firma.encode('latin-1', 'replace').decode('latin-1'), 0, 0, 'C')
 
@@ -51,20 +48,15 @@ def safe_clean_df(df):
     df.columns = [str(c).strip() for c in df.columns]
     if 'Articolo' in df.columns: df['DV'] = df['Articolo']
     elif 'Oggetto' in df.columns: df['DV'] = df['Oggetto']
-
-    text_cols = ['Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']
-    for col in text_cols:
-        if col in df.columns: df[col] = df[col].astype(str).replace(['None', 'nan', '<NA>', 'null'], '')
-
+    for c in ['Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']:
+        if c in df.columns: df[c] = df[col].astype(str).replace(['None', 'nan', '<NA>', 'null'], '') if 'col' in locals() else df[c].astype(str).replace(['None', 'nan', '<NA>', 'null'], '')
     nums = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in nums:
         if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
-
     if 'Data Scadenza' in df.columns:
         df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
     return df
 
-# --- 3. ACCESSO ---
 if "password_correct" not in st.session_state:
     st.title("🔒 Accesso Riservato")
     u, p = st.text_input("Utente"), st.text_input("Password", type="password")
@@ -79,16 +71,16 @@ else:
     with st.sidebar:
         try: st.image("logo.png", use_container_width=True)
         except: pass
-        st.session_state.dark_mode = st.toggle("🌙 Modalità Notte", value=st.session_state.dark_mode)
-        selezione = st.selectbox("MENU NAVIGAZIONE", ["🏠 Riepilogo Generale", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze_reali])
+        st.session_state.dark_mode = st.toggle("🌙 Notte", value=st.session_state.dark_mode)
+        selezione = st.selectbox("MENU", ["🏠 Riepilogo Generale", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze_reali])
         st.markdown("---")
-        can_edit_structure = st.toggle("⚙️ Modifica Struttura", value=False)
+        can_edit_structure = st.toggle("⚙️ Struttura", False)
         st.markdown("<br><br><br>---<br>✨ **Roberto & Gemini**", unsafe_allow_html=True)
         st.markdown("<small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
         if st.button("Logout 🚪"): st.session_state.clear(); st.rerun()
 
     if "Riepilogo" in selezione:
-        st.markdown(f'<div class="main-header"><h1>Command Center Arredamento</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
         try:
             df_imp = conn.read(worksheet="Impostazioni", ttl="5m")
             budget_totale = pd.to_numeric(df_imp.iloc[0, 1], errors='coerce')
@@ -117,12 +109,25 @@ else:
             df_scad = df_final[(df_final['Data Scadenza'].notna()) & (df_final['Versato'] < df_final['Importo Totale'])].copy()
             if not df_scad.empty:
                 df_scad['gg'] = (df_scad['Data Scadenza'] - pd.Timestamp(datetime.now().date())).dt.days
-                df_scad['Alert'] = df_scad['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
-                st.dataframe(df_scad.sort_values(by='gg'), use_container_width=True, hide_index=True)
+                df_scad['Stato Scadenza'] = df_scad['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 IN TEMPO"))
+
+                # RIPRISTINO BOTTONI COLORATI
+                st.dataframe(
+                    df_scad.sort_values(by='gg')[['Stanza', 'DV', 'Data Scadenza', 'Stato Scadenza']],
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Stato Scadenza": st.column_config.SelectboxColumn(
+                            "Stato Scadenza",
+                            options=["🔴 SCADUTO", "🟠 IMMINENTE", "🟢 IN TEMPO"]
+                        ),
+                        "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY")
+                    }
+                )
 
             col_pie, col_tab = st.columns([1, 1.2])
             with col_pie:
-                st.plotly_chart(px.pie(df_final, values='Importo Totale', names='Stanza', hole=0.5, title="Spesa per Stanza"), use_container_width=True)
+                st.plotly_chart(px.pie(df_final, values='Importo Totale', names='Stanza', hole=0.5), use_container_width=True)
                 if st.button("📄 Genera Report PDF"):
                     pdf = PDF(); pdf.add_page(); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(*COLOR_AZZURRO); pdf.set_text_color(255, 255, 255)
                     pdf.cell(30, 10, 'Stanza', 1, 0, 'C', True); pdf.cell(90, 10, 'Articolo', 1, 0, 'C', True); pdf.cell(35, 10, 'Totale', 1, 0, 'C', True); pdf.cell(35, 10, 'Versato', 1, 1, 'C', True)
@@ -148,8 +153,8 @@ else:
             nota_nuova = st.text_area("Nota dettagliata:", value=df.at[idx, 'Note'], height=150)
             if st.button("Aggiorna Nota"):
                 df.at[idx, 'Note'] = nota_nuova
-                st.session_state[f"temp_df_{stanza_nome}"] = df # Salviamo nello stato
-                st.success("Nota aggiornata nel dataframe temporaneo! Salva tutto sotto.")
+                st.session_state[f"temp_df_{stanza_nome}"] = df
+                st.success("Nota aggiornata! Salva tutto sotto.")
 
         with st.form(f"form_{stanza_nome}"):
             conf_cols = {
@@ -158,7 +163,6 @@ else:
                 "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"),
                 "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri")
             }
-            # Se abbiamo una nota aggiornata, usiamo quel DF
             df_to_show = st.session_state.get(f"temp_df_{stanza_nome}", df)
             df_edit = st.data_editor(df_to_show.drop(columns=['DV']), use_container_width=True, hide_index=True, num_rows="dynamic" if can_edit_structure else "fixed", column_config=conf_cols)
 
