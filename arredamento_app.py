@@ -15,7 +15,7 @@ if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = False
 
-st.set_page_config(page_title="Monitoraggio Arredamento V19.4", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V19.5", layout="wide", page_icon="🚀")
 
 if st.session_state.dark_mode:
     bg_color, card_color, text_color = "#0e1117", "#1d2129", "#ffffff"
@@ -66,11 +66,8 @@ def safe_clean_df(df):
     for c in cols_num:
         if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
 
-    # --- CURA DELLE DATE (V19.4) ---
     if 'Data Scadenza' in df.columns:
-        # Trasformiamo e forziamo a rimanere solo data (senza orario)
         df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
-        # Rimuoviamo il 1899 trasformandolo in valore vuoto (NaT)
         df.loc[df['Data Scadenza'].dt.year < 1950, 'Data Scadenza'] = pd.NaT
     return df
 
@@ -149,6 +146,18 @@ else:
                     st.download_button("📥 Scarica PDF", data=bytes(pdf.output(dest='S')), file_name="Report.pdf")
             with col_sx: st.dataframe(df_final[['Stanza', 'Descrizione_Visualizzata', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
+    elif "✨" in selezione:
+        st.title("✨ Wishlist")
+        df_w = safe_clean_df(conn.read(worksheet="desideri", ttl="1m"))
+        # --- FIX WISHLIST BUTTONS ---
+        w_config = {
+            "Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri Sito"),
+            "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi Foto")
+        }
+        df_ed_w = st.data_editor(df_w.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, column_config=w_config, num_rows="dynamic" if can_edit_structure else "fixed")
+        if st.button("Salva Wishlist"):
+            conn.update(worksheet="desideri", data=df_ed_w.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
+
     elif "📦" in selezione:
         stanza_nome = selezione.replace("📦 ", "").lower()
         st.title(f"🏠 {stanza_nome.capitalize()}")
@@ -170,14 +179,6 @@ else:
                         if str(r.get(col_stato, "")).strip() == "Saldato":
                             df_edit.at[df_edit.index[i], 'Versato'] = costo * q
                     except: continue
-                # Pulizia finale prima di mandare a Google
                 df_edit = df_edit.fillna('')
                 conn.update(worksheet=stanza_nome, data=df_edit)
                 st.cache_data.clear(); st.balloons(); time.sleep(1); st.rerun()
-
-    elif "✨" in selezione:
-        st.title("✨ Wishlist")
-        df_w = safe_clean_df(conn.read(worksheet="desideri", ttl="1m"))
-        df_ed_w = st.data_editor(df_w.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, num_rows="dynamic" if can_edit_structure else "fixed")
-        if st.button("Salva Wishlist"):
-            conn.update(worksheet="desideri", data=df_ed_w.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
