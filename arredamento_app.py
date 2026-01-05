@@ -11,11 +11,11 @@ if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA")
     st.stop()
 
-# --- 2. CONFIGURAZIONE PAGINA & TEMA ---
+# --- 2. CONFIGURAZIONE PAGINA ---
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = False
 
-st.set_page_config(page_title="Monitoraggio Arredamento V19.1", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V19.2", layout="wide", page_icon="🚀")
 
 if st.session_state.dark_mode:
     bg_color, card_color, text_color = "#0e1117", "#1d2129", "#ffffff"
@@ -37,7 +37,6 @@ st.markdown(f"""
 
 COLOR_AZZURRO = (46, 117, 182)
 
-# --- 3. CLASSE PDF (CON TOTALI E FIRMA PROPRIETÀ) ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(*COLOR_AZZURRO)
@@ -48,7 +47,6 @@ class PDF(FPDF):
         testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
         self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
         self.ln(15)
-
     def footer(self):
         self.set_y(-15); self.set_font('Arial', 'I', 8); self.set_text_color(128, 128, 128)
         firma = "Prodotto di Proprietà: Roberto & Gemini"
@@ -59,25 +57,20 @@ def safe_clean_df(df):
     df.columns = [str(c).strip() for c in df.columns]
     if 'Articolo' in df.columns: df['Descrizione_Visualizzata'] = df['Articolo']
     elif 'Oggetto' in df.columns: df['Descrizione_Visualizzata'] = df['Oggetto']
-
     text_cols = ['Oggetto', 'Articolo', 'Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']
     for col in text_cols:
-        if col in df.columns:
-            df[col] = df[col].astype(str).replace(['None', 'nan', '<NA>', 'undefined', 'null'], '')
-
+        if col in df.columns: df[col] = df[col].astype(str).replace(['None', 'nan', '<NA>', 'undefined', 'null'], '')
     cols_num = ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']
     for c in cols_num:
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
-
+        if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
     if 'Data Scadenza' in df.columns:
         df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
     return df
 
-# --- 4. LOGICA ACCESSO E SIDEBAR ---
+# --- 3. ACCESSO ---
 if "password_correct" not in st.session_state:
     st.title("🔒 Accesso Riservato")
-    u = st.text_input("Utente"); p = st.text_input("Password", type="password")
+    u, p = st.text_input("Utente"), st.text_input("Password", type="password")
     if st.button("Accedi"):
         if u == st.secrets["auth"]["username"] and p == st.secrets["auth"]["password"]:
             st.session_state["password_correct"] = True; st.rerun()
@@ -103,7 +96,6 @@ else:
             df_imp = conn.read(worksheet="Impostazioni", ttl="5m")
             budget_totale = pd.to_numeric(df_imp.iloc[0, 1], errors='coerce')
         except: budget_totale = 15000.0
-
         all_rows = []
         potential_cost = 0
         for s in stanze_reali:
@@ -112,24 +104,19 @@ else:
                 if not df_s.empty:
                     c_sn = 'Acquista S/N' if 'Acquista S/N' in df_s.columns else 'S/N'
                     df_c = df_s[df_s[c_sn].str.upper().str.strip() == 'S'].copy()
-                    df_c['Stanza'] = s.capitalize()
-                    all_rows.append(df_c)
+                    df_c['Stanza'] = s.capitalize(); all_rows.append(df_c)
                     potential_cost += df_s[df_s[c_sn].str.upper().str.strip() != 'S']['Importo Totale'].sum()
             except: continue
-
         if all_rows:
             df_final = pd.concat(all_rows)
             tot_conf, tot_versato = df_final['Importo Totale'].sum(), df_final['Versato'].sum()
-
             st.markdown(f'<div class="prediction-box">🔍 <b>Analisi Predittiva:</b> Potenziale spesa residua: <b>{potential_cost:,.2f}€</b></div>', unsafe_allow_html=True)
-
             m1, m2, m3, m4 = st.columns(4)
             with m1: st.markdown(f'<div class="metric-card"><div class="metric-label">Budget</div><div class="metric-value">{budget_totale:,.0f}€</div></div>', unsafe_allow_html=True)
             with m2: st.markdown(f'<div class="metric-card"><div class="metric-label">Confermato</div><div class="metric-value">{tot_conf:,.0f}€</div></div>', unsafe_allow_html=True)
             with m3: st.markdown(f'<div class="metric-card"><div class="metric-label">Pagato</div><div class="metric-value">{tot_versato:,.0f}€</div></div>', unsafe_allow_html=True)
             with m4: st.markdown(f'<div class="metric-card"><div class="metric-label">Disponibile</div><div class="metric-value">{budget_totale - tot_conf:,.0f}€</div></div>', unsafe_allow_html=True)
 
-            # --- SEZIONE SCADENZARIO ---
             st.markdown("---")
             st.subheader("🗓️ Scadenzario Pagamenti")
             df_scad = df_final[(df_final['Data Scadenza'].notna()) & (df_final['Versato'] < df_final['Importo Totale'])].copy()
@@ -137,7 +124,7 @@ else:
                 oggi = pd.Timestamp(datetime.now().date())
                 df_scad['gg'] = (df_scad['Data Scadenza'] - oggi).dt.days
                 df_scad['Alert'] = df_scad['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 In tempo"))
-                st.dataframe(df_scad[['Stanza', 'Descrizione_Visualizzata', 'Data Scadenza', 'gg', 'Alert']].sort_values('Data Scadenza'), use_container_width=True, hide_index=True, column_config={"Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"), "gg": st.column_config.NumberColumn("Giorni", format="%d")})
+                st.dataframe(df_scad[['Stanza', 'Descrizione_Visualizzata', 'Data Scadenza', 'gg', 'Alert']].sort_values('Data Scadenza'), use_container_width=True, hide_index=True, column_config={"Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY")})
             else: st.info("✅ Nessuna scadenza imminente.")
 
             col_dx, col_sx = st.columns([1, 1.5])
@@ -159,20 +146,26 @@ else:
         stanza_nome = selezione.replace("📦 ", "").lower()
         st.title(f"🏠 {stanza_nome.capitalize()}")
         df = safe_clean_df(conn.read(worksheet=stanza_nome, ttl="1m"))
-        col_sn = 'Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'
-        col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'
+        col_sn = 'Acquista S/N' if 'Acquista S/N' in df_s.columns else 'S/N'
+        col_stato = 'Stato Pagamento' if 'Stato Pagamento' in df_s.columns else 'Stato'
         with st.form(f"f_{stanza_nome}"):
             df_to_edit = df.drop(columns=['Descrizione_Visualizzata'], errors='ignore')
             c_config = {col_sn: st.column_config.SelectboxColumn(col_sn, options=["S", "N"]), col_stato: st.column_config.SelectboxColumn(col_stato, options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Data Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri")}
             df_edit = st.data_editor(df_to_edit, use_container_width=True, hide_index=True, column_config=c_config, num_rows="dynamic" if can_edit_structure else "fixed")
             if st.form_submit_button("💾 SALVA"):
+                # --- PULIZIA ATOMICA PRIMA DEL SALVATAGGIO ---
                 for i in range(len(df_edit)):
                     try:
-                        r = df_edit.iloc[i]; p, s, q = float(r['Prezzo Pieno']), float(r['Sconto %']), float(r['Acquistato'])
-                        costo = p * (1 - (s/100)) if p > 0 else float(r['Costo'])
-                        df_edit.at[df_edit.index[i], 'Costo'] = costo; df_edit.at[df_edit.index[i], 'Importo Totale'] = costo * q
-                        if str(r[col_stato]).strip() == "Saldato": df_edit.at[df_edit.index[i], 'Versato'] = costo * q
+                        r = df_edit.iloc[i]
+                        p, s, q = float(r.get('Prezzo Pieno', 0)), float(r.get('Sconto %', 0)), float(r.get('Acquistato', 1))
+                        costo = p * (1 - (s/100)) if p > 0 else float(r.get('Costo', 0))
+                        df_edit.at[df_edit.index[i], 'Costo'] = costo
+                        df_edit.at[df_edit.index[i], 'Importo Totale'] = costo * q
+                        if str(r.get(col_stato, "")).strip() == "Saldato":
+                            df_edit.at[df_edit.index[i], 'Versato'] = costo * q
                     except: continue
+                # Riempimento None finali per evitare crash Google
+                df_edit = df_edit.fillna(0).replace('None', '')
                 conn.update(worksheet=stanza_nome, data=df_edit)
                 st.cache_data.clear(); st.balloons(); time.sleep(1); st.rerun()
 
@@ -181,4 +174,4 @@ else:
         df_w = safe_clean_df(conn.read(worksheet="desideri", ttl="1m"))
         df_ed_w = st.data_editor(df_w.drop(columns=['Descrizione_Visualizzata'], errors='ignore'), use_container_width=True, hide_index=True, num_rows="dynamic" if can_edit_structure else "fixed")
         if st.button("Salva Wishlist"):
-            conn.update(worksheet="desideri", data=df_ed_w); st.cache_data.clear(); st.balloons(); st.rerun()
+            conn.update(worksheet="desideri", data=df_ed_w.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
