@@ -154,12 +154,42 @@ else:
                         except: continue
                     conn.update(worksheet=sn, data=df_e.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
 
+# ... [Sostituisci la parte della Checklist nel blocco elif "📦" in sel: con questa] ...
+
             st.markdown("---")
             st.subheader("🏁 Checklist Fine Lavori")
+
+            # Caricamento dati collaudi
+            try:
+                df_c = conn.read(worksheet="collaudi", ttl="0")
+                # Se la stanza non esiste nel foglio, la creiamo con valori False
+                if sn not in df_c['Stanza'].values:
+                    new_row = pd.DataFrame([{'Stanza': sn, 'Montaggio': False, 'Integrita': False, 'Pulizia': False}])
+                    df_c = pd.concat([df_c, new_row], ignore_index=True)
+            except:
+                # Se il foglio è vuoto o non esiste, creiamo una struttura base
+                df_c = pd.DataFrame([{'Stanza': sn, 'Montaggio': False, 'Integrita': False, 'Pulizia': False}])
+
+            # Recuperiamo i valori attuali per questa stanza
+            idx_c = df_c[df_c['Stanza'] == sn].index[0]
+
             c1, c2, c3 = st.columns(3)
-            with c1: st.checkbox(f"Montaggio {sn.capitalize()} Verificato", key=f"check1_{sn}")
-            with c2: st.checkbox("Assenza Graffi/Danni", key=f"check2_{sn}")
-            with c3: st.checkbox("Pulizia Post-Cantiere", key=f"check3_{sn}")
+            with c1:
+                v1 = st.checkbox(f"Montaggio {sn.capitalize()} Verificato", value=bool(df_c.at[idx_c, 'Montaggio']), key=f"c1_{sn}")
+            with c2:
+                v2 = st.checkbox("Assenza Graffi/Danni", value=bool(df_c.at[idx_c, 'Integrita']), key=f"c2_{sn}")
+            with c3:
+                v3 = st.checkbox("Pulizia Post-Cantiere", value=bool(df_c.at[idx_c, 'Pulizia']), key=f"c3_{sn}")
+
+            # Se l'utente cambia una spunta, salviamo subito su Google Sheets
+            if v1 != df_c.at[idx_c, 'Montaggio'] or v2 != df_c.at[idx_c, 'Integrita'] or v3 != df_c.at[idx_c, 'Pulizia']:
+                df_c.at[idx_c, 'Montaggio'] = v1
+                df_c.at[idx_c, 'Integrita'] = v2
+                df_c.at[idx_c, 'Pulizia'] = v3
+                conn.update(worksheet="collaudi", data=df_c)
+                st.toast(f"✅ Checklist {sn.capitalize()} salvata!", icon="💾")
+
+# ... [Prosegue con il resto del codice] ...
         except: st.error("⚠️ Google è un po' lento. Ricarica la pagina.")
 
     elif "✨" in sel:
