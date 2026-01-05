@@ -10,7 +10,7 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V21.3", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.9.9", layout="wide", page_icon="🚀")
 
 # --- STILE ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -67,16 +67,20 @@ else:
 
     if "Riepilogo" in sel:
         st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
-        try: bud = pd.to_numeric(conn.read(worksheet="Impostazioni", ttl="5m").iloc[0,1], errors='coerce')
+        try:
+            bud_data = conn.read(worksheet="Impostazioni", ttl="5m")
+            bud = pd.to_numeric(bud_data.iloc[0,1], errors='coerce')
         except: bud = 15000.0
+
         all_d = []
         for s in stanze:
             try:
-                d = clean_df(conn.read(worksheet=s, ttl="1m"))
+                d = clean_df(conn.read(worksheet=s, ttl="2m"))
                 if not d.empty:
                     cs = 'Acquista S/N' if 'Acquista S/N' in d.columns else 'S/N'
                     dc = d[d[cs].str.upper().str.strip() == 'S'].copy(); dc['Stanza'] = s.capitalize(); all_d.append(dc)
             except: continue
+
         if all_d:
             df_r = pd.concat(all_d); conf, pag = df_r['Importo Totale'].sum(), df_r['Versato'].sum()
             m1, m2, m3, m4 = st.columns(4)
@@ -84,25 +88,26 @@ else:
             m2.markdown(f'<div class="metric-card">CONFERMATO<div class="metric-value">{conf:,.0f}€</div></div>', unsafe_allow_html=True)
             m3.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
+
             st.subheader("🗓️ Scadenzario")
             sc = df_r[df_r['Data Scadenza'].notna() & (df_r['Versato'] < df_r['Importo Totale'])].copy()
             if not sc.empty:
                 sc['gg'] = (sc['Data Scadenza'] - pd.Timestamp(datetime.now().date())).dt.days
                 sc['Stato'] = sc['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
                 sc['Data Scadenza'] = sc['Data Scadenza'].dt.date
-                st.dataframe(sc.sort_values('gg')[['Stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True, column_config={"Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY")})
+                st.dataframe(sc.sort_values('gg')[['Stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
+
             c_p, c_t = st.columns([1, 1.2])
             with c_p:
                 st.plotly_chart(px.pie(df_r, values='Importo Totale', names='Stanza', hole=0.5), use_container_width=True)
                 if st.button("📄 PDF"):
-                    p = PDF(); p.add_page(); p.set_font('Arial','B',10); p.set_fill_color(46,117,182); p.set_text_color(255,255,255)
-                    p.cell(30,10,'Stanza',1,0,'C',1); p.cell(90,10,'Articolo',1,0,'C',1); p.cell(35,10,'Totale',1,0,'C',1); p.cell(35,10,'Versato',1,1,'C',1)
-                    p.set_font('Arial','',9); p.set_text_color(0,0,0)
+                    pdf = PDF(); pdf.add_page(); pdf.set_font('Arial','B',10); pdf.set_fill_color(46,117,182); pdf.set_text_color(255,255,255)
+                    pdf.cell(30,10,'Stanza',1,0,'C',1); pdf.cell(90,10,'Articolo',1,0,'C',1); pdf.cell(35,10,'Totale',1,0,'C',1); pdf.cell(35,10,'Versato',1,1,'C',1)
+                    pdf.set_font('Arial','',9); pdf.set_text_color(0,0,0)
                     for _, r in df_r.iterrows():
-                        y=p.get_y(); p.set_xy(40,y); p.multi_cell(90,10,str(r['DV']).encode('latin-1','replace').decode('latin-1'),1); h=max(p.get_y()-y,10)
-                        p.set_xy(10,y); p.cell(30,h,str(r['Stanza']),1); p.set_xy(130,y); p.cell(35,h,f"{r['Importo Totale']:,.2f}",1); p.cell(35,h,f"{r['Versato']:,.2f}",1,1)
-                    p.set_font('Arial','B',10); p.cell(120,10,'TOTALI',1,0,'R'); p.cell(35,10,f"{conf:,.2f}",1,0,'R'); p.cell(35,10,f"{pag:,.2f}",1,1,'R')
-                    st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
+                        y=pdf.get_y(); pdf.set_xy(40,y); pdf.multi_cell(90,10,str(r['DV']).encode('latin-1','replace').decode('latin-1'),1); h=max(pdf.get_y()-y,10)
+                        pdf.set_xy(10,y); pdf.cell(30,h,str(r['Stanza']),1); pdf.set_xy(130,y); pdf.cell(35,h,f"{r['Importo Totale']:,.2f}",1); pdf.cell(35,h,f"{r['Versato']:,.2f}",1,1)
+                    st.download_button("📥 Scarica PDF", bytes(pdf.output(dest='S')), "Report.pdf")
             c_t.dataframe(df_r[['Stanza','DV','Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
     elif "📦" in sel:
@@ -110,10 +115,10 @@ else:
         try:
             df = clean_df(conn.read(worksheet=sn, ttl="0"))
 
-            # --- LOGICA SIGILLO ORO (NUOVA) ---
+            # BANNER SIGILLO ORO
             is_closed = any(df['Stanza Chiusa'].astype(str).str.upper() == "TRUE") if 'Stanza Chiusa' in df.columns else False
             if is_closed:
-                st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è stata ufficialmente completata!</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è completata!</div>', unsafe_allow_html=True)
 
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
             col_t1, col_t2 = st.columns(2)
@@ -123,7 +128,8 @@ else:
             c_sn, c_st = ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'), ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato')
 
             with st.expander("📝 NOTE"):
-                art = st.selectbox("Seleziona Articolo:", df['DV'].tolist())
+                art_list = df['DV'].tolist()
+                art = st.selectbox("Seleziona Articolo:", art_list)
                 idx_n = df[df['DV'] == art].index[0]
                 nt_key = f"note_val_{sn}_{idx_n}"
                 if nt_key not in st.session_state: st.session_state[nt_key] = str(df.at[idx_n, 'Note'])
@@ -131,16 +137,12 @@ else:
                 if st.button("Conferma Nota"): st.session_state[nt_key] = nt; st.success("Nota pronta!")
 
             with st.form(f"f_{sn}"):
-                # --- CHECKBOX SIGILLO ORO ---
                 check_chiusura = st.checkbox("🔒 Chiudi Stanza (Attiva Sigillo Oro)", value=is_closed)
-
                 cfg = {c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]), c_st: st.column_config.SelectboxColumn(c_st, options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri")}
                 df_e = st.data_editor(df.drop(columns=['DV']), use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
 
                 if st.form_submit_button("💾 SALVA TUTTO"):
-                    # Salvataggio stato Sigillo Oro
                     df_e['Stanza Chiusa'] = "TRUE" if check_chiusura else "FALSE"
-
                     for i in range(len(df_e)):
                         k = f"note_val_{sn}_{i}"
                         if k in st.session_state: df_e.at[i, 'Note'] = st.session_state[k]
@@ -153,8 +155,8 @@ else:
                                 df_e.at[df_e.index[i],'Data Scadenza'] = pd.NaT
                         except: continue
                     conn.update(worksheet=sn, data=df_e.fillna(''))
-                    st.cache_data.clear(); st.balloons(); st.success("Salvato con successo!"); time.sleep(1); st.rerun()
-        except Exception as e: st.error(f"Errore: {e}")
+                    st.cache_data.clear(); st.balloons(); st.success("Salvato!"); time.sleep(1); st.rerun()
+        except: st.error("Errore nel caricamento. Attendi un minuto per la quota di Google.")
 
     elif "✨" in sel:
         st.title("✨ Wishlist")
@@ -164,4 +166,4 @@ else:
             df_ew = st.data_editor(df_w.drop(columns=['DV']), use_container_width=True, hide_index=True, column_config=w_cfg, num_rows="dynamic" if edit_struct else "fixed")
             if st.button("Salva Wishlist"):
                 conn.update(worksheet="desideri", data=df_ew.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
-        except: st.balloons(); st.rerun()
+        except: st.error("Quota Google raggiunta. Attendi un momento.")
