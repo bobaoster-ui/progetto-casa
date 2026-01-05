@@ -10,20 +10,25 @@ if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
-st.set_page_config(page_title="Monitoraggio Arredamento V20.8", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V20.9", layout="wide", page_icon="🚀")
 
 # --- STILE E COLORI ---
 bc, cc, tc = ("#0e1117", "#1d2129", "#ffffff") if st.session_state.dark_mode else ("#f8f9fc", "#ffffff", "#1f2937")
 grad = "linear-gradient(90deg, #0f2027, #203a43, #2c5364)" if st.session_state.dark_mode else "linear-gradient(90deg, #2e5a88, #4a90e2)"
-st.markdown(f"<style>.stApp {{background-color: {bc}; color: {tc};}} .main-header {{background: {grad}; padding: 30px; border-radius: 15px; color: white; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);}} .metric-card {{background-color: {cc}; padding: 20px; border-radius: 12px; border-bottom: 5px solid #2e5a88; text-align: center;}} .metric-value {{font-size: 1.8em; font-weight: 800; color: #2e5a88;}}</style>", unsafe_allow_html=True)
+st.markdown(f"<style>.stApp {{background-color: {bc}; color: {tc};}} .main-header {{background: {grad}; padding: 30px; border-radius: 15px; color: white; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);}} .metric-card {{background-color: {cc}; padding: 20px; border-radius: 12px; border-bottom: 5px solid #2e5a88; text-align: center; color: {tc};}} .metric-value {{font-size: 1.8em; font-weight: 800; color: #2e5a88;}}</style>", unsafe_allow_html=True)
 
 class PDF(FPDF):
     def header(self):
-        self.set_fill_color(46, 117, 182); self.rect(0, 0, 210, 40, 'F')
-        self.set_font('Arial', 'B', 16); self.set_text_color(255, 255, 255); self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
-        self.set_font('Arial', 'I', 10); self.cell(0, 10, f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'.encode('latin-1','replace').decode('latin-1'), ln=True, align='C'); self.ln(15)
+        self.set_fill_color(46, 117, 182) # TORNA IL BLU
+        self.rect(0, 0, 210, 40, 'F')
+        self.set_font('Arial', 'B', 16); self.set_text_color(255, 255, 255)
+        self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
+        self.set_font('Arial', 'I', 10)
+        testo = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
+        self.cell(0, 10, testo.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C'); self.ln(15)
     def footer(self):
-        self.set_y(-15); self.set_font('Arial', 'I', 8); self.set_text_color(128, 128, 128); self.cell(0, 10, "Prodotto di Proprietà: Roberto & Gemini".encode('latin-1','replace').decode('latin-1'), 0, 0, 'C')
+        self.set_y(-15); self.set_font('Arial', 'I', 8); self.set_text_color(128, 128, 128)
+        self.cell(0, 10, "Prodotto di Proprietà: Roberto & Gemini".encode('latin-1', 'replace').decode('latin-1'), 0, 0, 'C')
 
 def clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
@@ -33,7 +38,8 @@ def clean_df(df):
         if c in df.columns: df[c] = df[c].astype(str).replace(['None', 'nan', '<NA>', 'null', ''], '')
     for c in ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']:
         if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
-    if 'Data Scadenza' in df.columns: df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
+    if 'Data Scadenza' in df.columns:
+        df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
     return df
 
 if "password_correct" not in st.session_state:
@@ -71,24 +77,30 @@ else:
             m2.markdown(f'<div class="metric-card">CONFERMATO<div class="metric-value">{conf:,.0f}€</div></div>', unsafe_allow_html=True)
             m3.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
+
             st.subheader("🗓️ Scadenzario")
             sc = df[df['Data Scadenza'].notna() & (df['Versato'] < df['Importo Totale'])].copy()
             if not sc.empty:
                 sc['gg'] = (sc['Data Scadenza'] - pd.Timestamp(datetime.now().date())).dt.days
                 sc['Stato'] = sc['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
-                st.dataframe(sc.sort_values('gg')[['Stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True, column_config={"Stato": st.column_config.SelectboxColumn("Stato", options=["🔴 SCADUTO", "🟠 IMMINENTE", "🟢 OK"])})
+                # FORMATO DATA CORRETTO GG/MM/AAAA
+                st.dataframe(sc.sort_values('gg')[['Stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True,
+                             column_config={
+                                 "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"),
+                                 "Stato": st.column_config.SelectboxColumn("Stato", options=["🔴 SCADUTO", "🟠 IMMINENTE", "🟢 OK"])
+                             })
             c_p, c_t = st.columns([1, 1.2])
             with c_p:
                 st.plotly_chart(px.pie(df, values='Importo Totale', names='Stanza', hole=0.5), use_container_width=True)
                 if st.button("📄 PDF"):
                     p = PDF(); p.add_page(); p.set_font('Arial','B',10); p.set_fill_color(46,117,182); p.set_text_color(255,255,255)
-                    p.cell(30,10,'Stanza',1); p.cell(90,10,'Articolo',1); p.cell(35,10,'Totale',1); p.cell(35,10,'Versato',1,1)
+                    p.cell(30,10,'Stanza',1,0,'C',1); p.cell(90,10,'Articolo',1,0,'C',1); p.cell(35,10,'Totale',1,0,'C',1); p.cell(35,10,'Versato',1,1,'C',1)
                     p.set_font('Arial','',9); p.set_text_color(0,0,0)
                     for _, r in df.iterrows():
                         y=p.get_y(); p.set_xy(40,y); p.multi_cell(90,10,str(r['DV']).encode('latin-1','replace').decode('latin-1'),1); h=max(p.get_y()-y,10)
                         p.set_xy(10,y); p.cell(30,h,str(r['Stanza']),1); p.set_xy(130,y); p.cell(35,h,f"{r['Importo Totale']:,.2f}",1); p.cell(35,h,f"{r['Versato']:,.2f}",1,1)
-                    p.set_font('Arial','B',10); p.cell(120,10,'TOTALI',1); p.cell(35,10,f"{conf:,.2f}",1); p.cell(35,10,f"{pag:,.2f}",1,1)
-                    st.download_button("📥 Scarica", bytes(p.output(dest='S')), "Report.pdf")
+                    p.set_font('Arial','B',10); p.cell(120,10,'TOTALI',1,0,'R'); p.cell(35,10,f"{conf:,.2f}",1,0,'R'); p.cell(35,10,f"{pag:,.2f}",1,1,'R')
+                    st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
             c_t.dataframe(df[['Stanza','DV','Importo Totale','Versato']], use_container_width=True, hide_index=True)
 
     elif "📦" in sel:
@@ -96,10 +108,12 @@ else:
         df = clean_df(conn.read(worksheet=sn, ttl="0"))
         c_sn, c_st = ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'), ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato')
         with st.expander("📝 NOTE"):
-            art = st.selectbox("Articolo:", df['DV'].tolist())
+            art_list = df['DV'].tolist()
+            art = st.selectbox("Articolo:", art_list)
             idx = df[df['DV'] == art].index[0]
             nt = st.text_area("Nota:", value=df.at[idx, 'Note'], height=100)
-            if st.button("Aggiorna Nota"): df.at[idx, 'Note'] = nt; st.session_state[f"tmp_{sn}"] = df; st.success("Nota Ok!")
+            if st.button("Aggiorna Nota"):
+                df.at[idx, 'Note'] = nt; st.session_state[f"tmp_{sn}"] = df; st.success("Nota Ok!")
         with st.form(f"f_{sn}"):
             cfg = {c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]), c_st: st.column_config.SelectboxColumn(c_st, options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri")}
             df_e = st.data_editor(st.session_state.get(f"tmp_{sn}", df).drop(columns=['DV']), use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
