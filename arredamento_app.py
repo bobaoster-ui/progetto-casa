@@ -10,7 +10,7 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V30.2", layout="wide", page_icon="💎")
+st.set_page_config(page_title="Monitoraggio Arredamento V30.4", layout="wide", page_icon="💎")
 
 # Connessione Supabase
 @st.cache_resource
@@ -37,7 +37,6 @@ st.markdown(f"""<style>
     .main-header {{background: {grad}; padding: 30px; border-radius: 15px; color: white; margin-bottom: 25px;}}
     .metric-card {{background-color: {cc}; padding: 15px; border-radius: 10px; border-bottom: 4px solid #2e5a88; text-align: center; color: {tc}; margin-bottom: 10px;}}
     .metric-value {{font-size: 1.8em; font-weight: 800; color: #2e5a88;}}
-    .gold-seal {{background: linear-gradient(145deg, #ffdf00, #d4af37); padding: 20px; border-radius: 15px; text-align: center; color: black; font-weight: bold; border: 2px solid #b8860b; margin-bottom: 20px;}}
 </style>""", unsafe_allow_html=True)
 
 if "password_correct" not in st.session_state:
@@ -60,7 +59,8 @@ else:
     response = supabase.table("arredamento").select("*").execute()
     df_all = pd.DataFrame(response.data)
     if not df_all.empty:
-        df_all['scadenza'] = pd.to_datetime(df_all['scadenza'], errors='coerce')
+        # Convertiamo subito in formato data pulito (senza ore)
+        df_all['scadenza'] = pd.to_datetime(df_all['scadenza']).dt.date
 
     if "Riepilogo" in sel:
         st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
@@ -69,11 +69,9 @@ else:
         if not df_real.empty:
             conf = df_real['importo_totale'].sum()
             pag = df_real['versato'].sum()
-
-            # --- BUDGET ---
             budget_max = st.sidebar.number_input("Imposta Budget Totale (€)", value=50000, step=1000)
-            perc = min(conf / budget_max, 1.0)
-            st.progress(perc, text=f"Budget Utilizzato: {conf:,.0f}€ su {budget_max:,.0f}€")
+            st.write(f"📊 **Budget: {conf:,.0f}€ / {budget_max:,.0f}€**")
+            st.progress(min(conf / budget_max, 1.0))
 
             m1, m2, m3 = st.columns(3)
             m1.markdown(f'<div class="metric-card">CONFERMATO<div class="metric-value">{conf:,.0f}€</div></div>', unsafe_allow_html=True)
@@ -85,70 +83,69 @@ else:
                 st.plotly_chart(px.pie(df_real, values='importo_totale', names='stanza', hole=0.5), use_container_width=True)
             with c2:
                 st.subheader("🗓️ Scadenzario")
-                # Filtro scadenze future o mancate
                 sc = df_real[df_real['scadenza'].notna() & (df_real['versato'] < df_real['importo_totale'])].copy()
                 if not sc.empty:
-                    sc['gg'] = (sc['scadenza'].dt.date - datetime.now().date()).apply(lambda x: x.days)
+                    sc['gg'] = (sc['scadenza'] - datetime.now().date()).apply(lambda x: x.days)
                     sc['Stato'] = sc['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
                     st.dataframe(sc.sort_values('gg')[['stanza','articolo','scadenza','Stato']], use_container_width=True, hide_index=True)
-                else:
-                    st.write("Nessuna scadenza pendente.")
 
-            # --- STAMPA PDF ---
             if st.button("📑 Genera Report PDF"):
-                pdf = PDF()
-                pdf.add_page()
-                pdf.set_font('Arial', 'B', 12)
-                pdf.cell(0, 10, f"Totale Impegnato: {conf:,.2f} EURO", ln=True)
-                pdf.cell(0, 10, f"Totale Versato: {pag:,.2f} EURO", ln=True)
-                pdf.cell(0, 10, f"Residuo: {conf-pag:,.2f} EURO", ln=True)
-                st.download_button("Scarica PDF", pdf.output(dest='S').encode('latin-1'), "Report_Jacopo.pdf", "application/pdf")
-        else:
-            st.info("Database vuoto.")
+                try:
+                    pdf = PDF()
+                    pdf.add_page(); pdf.set_font('Arial', 'B', 12)
+                    pdf.cell(0, 10, f"Totale Impegnato: {conf:,.2f} EUR", ln=True)
+                    pdf.cell(0, 10, f"Totale Versato: {pag:,.2f} EUR", ln=True)
+                    pdf.cell(0, 10, f"Residuo: {conf-pag:,.2f} EUR", ln=True)
+                    st.download_button("Scarica PDF", pdf.output(dest='S').encode('latin-1'), "Report.pdf", "application/pdf")
+                except Exception as e: st.error(f"Errore PDF: {e}")
 
-    elif "📦" in sel or "Wishlist" in sel:
-        sn = sel.replace("📦 ", "") if "📦" in sel else "Wishlist"
+    elif "Wishlist" in sel:
+        st.title("✨ Wishlist (Doppio Link)")
+        df_w = df_all[df_all['stanza'] == "Wishlist"].copy() if not df_all.empty else pd.DataFrame()
+        with st.form("f_wish"):
+            w_cfg = {
+                "link_fattura": st.column_config.LinkColumn("🔗 Sito Web", display_text="Apri Sito"),
+                "link_foto": st.column_config.LinkColumn("📸 Foto", display_text="Apri Foto"),
+                "importo_totale": st.column_config.NumberColumn("Prezzo Stimato", format="%.2f €")
+            }
+            cols_w = ['articolo', 'importo_totale', 'link_fattura', 'link_foto', 'nota']
+            df_ew = st.data_editor(df_w[cols_w] if not df_w.empty else pd.DataFrame(columns=cols_w), num_rows="dynamic", use_container_width=True, hide_index=True, column_config=w_cfg)
+            if st.form_submit_button("✨ SALVA WISHLIST"):
+                supabase.table("arredamento").delete().eq("stanza", "Wishlist").execute()
+                for _, row in df_ew.iterrows():
+                    if row['articolo']:
+                        supabase.table("arredamento").insert({"stanza": "Wishlist", "articolo": str(row['articolo']), "importo_totale": float(row.get('importo_totale', 0) or 0), "link_fattura": str(row.get('link_fattura', '') or ''), "link_foto": str(row.get('link_foto', '') or ''), "nota": str(row.get('nota', '') or ''), "stanza_chiusa": False}).execute()
+                st.balloons(); st.rerun()
+
+    elif "📦" in sel:
+        sn = sel.replace("📦 ", "")
         st.title(f"🏠 {sn}")
-        df_s = df_all[df_all['stanza'] == sn].copy() if not df_all.empty else pd.DataFrame()
-
-        is_closed = df_s['stanza_chiusa'].any() if not df_s.empty else False
-        if is_closed and sn != "Wishlist":
-            st.markdown(f'<div class="gold-seal">🏆 Stanza {sn} Completata!</div>', unsafe_allow_html=True)
-
+        df_s = df_all[df_all['stanza'] == sn].copy()
         with st.form(f"form_{sn}"):
-            if sn != "Wishlist":
-                check_chiusura = st.checkbox("🔒 Chiudi Stanza (Sigillo Oro)", value=is_closed)
+            check_chiusura = st.checkbox("🔒 Chiudi Stanza", value=df_s['stanza_chiusa'].any() if not df_s.empty else False)
+            # CONFIGURAZIONE COLONNE: Forziamo il tipo Date per la scadenza
+            s_cfg = {
+                "scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"),
+                "importo_totale": st.column_config.NumberColumn("Totale", disabled=True, format="%.2f €")
+            }
+            cols_s = ['articolo', 'acquistato', 'prezzo_pieno', 'sconto_percentuale', 'costo', 'importo_totale', 'versato', 'stato_pagamento', 'scadenza', 'nota']
+            df_e = st.data_editor(df_s[cols_s] if not df_s.empty else pd.DataFrame(columns=cols_s), num_rows="dynamic", use_container_width=True, hide_index=True, column_config=s_cfg)
 
-            # --- MODIFICA STRUTTURA (Aggiungi/Cancella righe) ---
-            st.write("Modifica i dati o aggiungi nuove righe in fondo:")
-            df_e = st.data_editor(df_s.drop(columns=['id', 'stanza', 'created_at', 'stanza_chiusa']) if not df_s.empty else pd.DataFrame(columns=['articolo', 'acquistato', 'prezzo_pieno', 'sconto_percentuale', 'costo', 'importo_totale', 'versato', 'stato_pagamento', 'scadenza', 'nota']),
-                                  num_rows="dynamic", use_container_width=True, hide_index=True)
-
-            if st.form_submit_button("💾 SALVA MODIFICHE"):
-                # Cancelliamo i vecchi dati della stanza per riscriverli (gestione sicura per dynamic rows)
+            if st.form_submit_button("💾 SALVA"):
                 supabase.table("arredamento").delete().eq("stanza", sn).execute()
-
                 for _, row in df_e.iterrows():
                     if row['articolo']:
                         p_pieno = float(row.get('prezzo_pieno', 0) or 0)
                         sconto = float(row.get('sconto_percentuale', 0) or 0)
-                        qta = float(row.get('acquistato', 1) or 1)
                         c_u = p_pieno * (1 - (sconto/100)) if p_pieno > 0 else float(row.get('costo', 0) or 0)
-
-                        item = {
-                            "stanza": sn,
-                            "articolo": str(row['articolo']),
-                            "acquistato": qta,
-                            "prezzo_pieno": p_pieno,
-                            "sconto_percentuale": sconto,
-                            "costo": c_u,
-                            "importo_totale": c_u * qta,
-                            "versato": float(row.get('versato', 0) or 0),
-                            "nota": str(row.get('nota', '') or ''),
-                            "stato_pagamento": str(row.get('stato_pagamento', '') or ''),
-                            "scadenza": str(row['scadenza']) if pd.notnull(row.get('scadenza')) else None,
-                            "stanza_chiusa": check_chiusura if sn != "Wishlist" else False
-                        }
-                        supabase.table("arredamento").insert(item).execute()
-
-                st.balloons(); st.success("Database Aggiornato!"); time.sleep(1); st.rerun()
+                        # Salvataggio pulito della data
+                        scad = str(row['scadenza']) if pd.notnull(row.get('scadenza')) else None
+                        supabase.table("arredamento").insert({
+                            "stanza": sn, "articolo": str(row['articolo']), "acquistato": float(row.get('acquistato', 1) or 1),
+                            "prezzo_pieno": p_pieno, "sconto_percentuale": sconto, "costo": c_u,
+                            "importo_totale": c_u * float(row.get('acquistato', 1) or 1),
+                            "versato": float(row.get('versato', 0) or 0), "nota": str(row.get('nota', '')),
+                            "stato_pagamento": str(row.get('stato_pagamento', '')),
+                            "scadenza": scad, "stanza_chiusa": check_chiusura
+                        }).execute()
+                st.balloons(); st.rerun()
