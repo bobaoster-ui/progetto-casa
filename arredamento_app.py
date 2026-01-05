@@ -10,7 +10,7 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.8", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.9", layout="wide", page_icon="🏆")
 
 # --- [BLINDATO: STILE E CSS] ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -104,10 +104,9 @@ else:
                     p.cell(30, 10, 'Stanza', 1, 0, 'C', 1); p.cell(90, 10, 'Articolo', 1, 0, 'C', 1); p.cell(35, 10, 'Totale', 1, 0, 'C', 1); p.cell(35, 10, 'Versato', 1, 1, 'C', 1)
                     p.set_font('Arial', '', 9); p.set_text_color(0, 0, 0)
                     for _, r in df_r.iterrows():
-                        y_start = p.get_y(); p.set_xy(40, y_start)
-                        p.multi_cell(90, 10, str(r['DV']).encode('latin-1','replace').decode('latin-1'), 1)
-                        h = max(p.get_y() - y_start, 10); p.set_xy(10, y_start); p.cell(30, h, str(r['Stanza']), 1)
-                        p.set_xy(130, y_start); p.cell(35, h, f"{r['Importo Totale']:,.2f}", 1); p.cell(35, h, f"{r['Versato']:,.2f}", 1, 1)
+                        y_s = p.get_y(); p.set_xy(40,y_s); p.multi_cell(90,10,str(r['DV']).encode('latin-1','replace').decode('latin-1'),1)
+                        h = max(p.get_y()-y_s, 10); p.set_xy(10,y_s); p.cell(30,h,str(r['Stanza']),1)
+                        p.set_xy(130,y_s); p.cell(35,h,f"{r['Importo Totale']:,.2f}",1); p.cell(35,h,f"{r['Versato']:,.2f}",1,1)
                     st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
             c_t.dataframe(df_r[['Stanza','DV','Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
@@ -117,15 +116,9 @@ else:
             df = clean_df(conn.read(worksheet=sn, ttl="0"))
             if 'Stanza Chiusa' not in df.columns: df['Stanza Chiusa'] = "FALSE"
 
-            # Recuperiamo lo stato attuale
-            curr_closed = str(df.at[0, 'Stanza Chiusa']).upper() == "TRUE"
-
-            head1, head2 = st.columns([3, 1])
-            with head2:
-                # Il toggle ora non fa rerun immediato, ma cambia il valore nel dataframe
-                is_closed = st.toggle("🔒 Chiudi Stanza", value=curr_closed, key=f"tog_{sn}")
-
-            if is_closed:
+            # Controllo stato iniziale per visualizzare il sigillo
+            is_currently_closed = str(df.at[0, 'Stanza Chiusa']).upper() == "TRUE"
+            if is_currently_closed:
                 st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è stata ufficialmente completata!</div>', unsafe_allow_html=True)
 
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
@@ -135,14 +128,18 @@ else:
 
             c_st, c_sn = ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato'), ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N')
 
+            # --- FORM UNIFICATO PER EVITARE OFFUSCAMENTI ---
             with st.form(f"f_{sn}"):
+                st.markdown("##### ⚙️ Gestione Dati e Stato")
+                # Spostiamo il toggle qui dentro: non causerà offuscamento perché il form non invia dati finché non premi il tasto
+                check_chiusura = st.checkbox("🔒 Segna stanza come COMPLETATA (Attiva Sigillo Oro)", value=is_currently_closed)
+
                 cols_to_show = [c for c in df.columns if c not in ['DV', 'Stanza Chiusa']]
                 cfg = {c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]), c_st: st.column_config.SelectboxColumn(c_st, options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc Drive", display_text="Apri")}
                 df_e = st.data_editor(df[cols_to_show], use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
 
-                if st.form_submit_button("💾 SALVA TUTTO"):
-                    # Salviamo lo stato del toggle nel dataframe
-                    df_e['Stanza Chiusa'] = "TRUE" if is_closed else "FALSE"
+                if st.form_submit_button("💾 SALVA TUTTO (Dati + Stato Chiusura)"):
+                    df_e['Stanza Chiusa'] = "TRUE" if check_chiusura else "FALSE"
                     for i in range(len(df_e)):
                         try:
                             r = df_e.iloc[i]; p, s, q = float(r.get('Prezzo Pieno',0)), float(r.get('Sconto %',0)), float(r.get('Acquistato',1))
@@ -155,7 +152,7 @@ else:
                                 df_e.at[df_e.index[i],'Versato'] = 0.0
                         except: continue
                     conn.update(worksheet=sn, data=df_e.fillna('')); st.cache_data.clear()
-                    st.success(f"Proprietà aggiornata con successo!"); st.balloons(); time.sleep(1); st.rerun()
+                    st.success(f"Proprietà aggiornata!"); st.balloons(); time.sleep(1); st.rerun()
 
             st.markdown("---")
             st.subheader("🏁 Checklist Fine Lavori")
@@ -169,7 +166,7 @@ else:
                 if st.button(f"Aggiorna Checklist {sn.capitalize()}"):
                     df_c.at[idx_c, 'Montaggio'], df_c.at[idx_c, 'Integrita'], df_c.at[idx_c, 'Pulizia'] = v1, v2, v3
                     conn.update(worksheet="collaudi", data=df_c); st.success("Checklist salvata!"); st.balloons(); time.sleep(1); st.rerun()
-            except: st.warning("Foglio 'collaudi' non pronto.")
+            except: st.warning("Foglio collaudi non pronto.")
         except Exception as e: st.error(f"Errore: {e}")
 
     elif "✨" in sel:
