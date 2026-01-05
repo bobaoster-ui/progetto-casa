@@ -2,3 +2,4 @@ st-gsheets-connection
 plotly
 xlsxwriter
 fpdf2
+supabase
