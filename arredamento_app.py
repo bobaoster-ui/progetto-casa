@@ -11,7 +11,7 @@ import requests
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.10.11", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.10.12", layout="wide", page_icon="🚀")
 
 # --- CONNESSIONE SUPABASE ---
 @st.cache_resource
@@ -29,6 +29,7 @@ st.markdown(f"""<style>
     .main-header {{background: {grad}; padding: 30px; border-radius: 15px; color: white; margin-bottom: 25px;}}
     .metric-card {{background-color: {cc}; padding: 15px; border-radius: 10px; border-bottom: 4px solid #2e5a88; text-align: center; color: {tc}; margin-bottom: 10px;}}
     .metric-value {{font-size: 1.8em; font-weight: 800; color: #2e5a88;}}
+    .metric-savings {{font-size: 1.8em; font-weight: 800; color: #28a745;}} /* Verde per il risparmio */
     .gold-seal {{background: linear-gradient(145deg, #ffdf00, #d4af37); padding: 20px; border-radius: 15px; text-align: center; color: black; font-weight: bold; border: 2px solid #b8860b; margin-bottom: 20px; box-shadow: 0px 4px 15px rgba(212, 175, 55, 0.4);}}
     .manual-container {{background-color: {cc}; padding: 30px; border-radius: 15px; border: 1px solid #e0e0e0; line-height: 1.6;}}
 </style>""", unsafe_allow_html=True)
@@ -68,7 +69,6 @@ else:
         try: st.image("logo.png", use_container_width=True)
         except: pass
         st.session_state.dark_mode = st.toggle("🌙 Notte", st.session_state.dark_mode)
-        # AGGIUNTA VOCE MANUALE AL MENU
         sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze] + ["📖 Manuale"])
         edit_struct = st.toggle("⚙️ Modifica Struttura", False)
         st.markdown("<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
@@ -79,14 +79,29 @@ else:
         bud = 15000.0
         res = sb.table("arredamento").select("*").execute()
         df_all = clean_df(pd.DataFrame(res.data))
+
         if not df_all.empty:
             df_r = df_all[df_all['Acquista S/N'].str.upper().str.strip() == 'S'].copy()
             conf, pag = df_r['Importo Totale'].sum(), df_r['Versato'].sum()
+
+            # --- ANALISI RISPARMIO ---
+            # Calcoliamo il valore teorico (Prezzo Pieno * Quantità) vs Importo Totale (quello scontato)
+            valore_teorico = (df_r['Prezzo Pieno'] * df_r['Acquistato']).sum()
+            risparmio_totale = valore_teorico - conf
+            # --------------------------
+
+            # Prima riga metriche (Budget e Pagamenti)
             m1, m2, m3, m4 = st.columns(4)
             m1.markdown(f'<div class="metric-card">BUDGET<div class="metric-value">{bud:,.0f}€</div></div>', unsafe_allow_html=True)
             m2.markdown(f'<div class="metric-card">CONFERMATO<div class="metric-value">{conf:,.0f}€</div></div>', unsafe_allow_html=True)
             m3.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
+
+            # Seconda riga metriche (Nuova: Analisi Risparmio)
+            s1, s2 = st.columns(2)
+            s1.markdown(f'<div class="metric-card">VALORE REALE MERCE<div class="metric-value">{valore_teorico:,.0f}€</div></div>', unsafe_allow_html=True)
+            s2.markdown(f'<div class="metric-card">RISPARMIO TOTALIZZATO 🟢<div class="metric-savings">{risparmio_totale:,.0f}€</div></div>', unsafe_allow_html=True)
+
             st.subheader("🗓️ Scadenzario")
             sc = df_r[df_r['Data Scadenza'].notna()].copy()
             sc = sc[sc['Versato'] < sc['Importo Totale']]
@@ -98,6 +113,7 @@ else:
                 sc_display['Data Scadenza'] = sc_display['Data Scadenza'].dt.strftime('%d/%m/%Y')
                 st.dataframe(sc_display[['stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
             else: st.info("Nessuna scadenza imminente trovata.")
+
             c_p, c_t = st.columns([1, 1.2])
             with c_p:
                 st.plotly_chart(px.pie(df_r, values='Importo Totale', names='stanza', hole=0.5), use_container_width=True)
@@ -114,18 +130,14 @@ else:
     elif sel == "📖 Manuale":
         st.markdown('<div class="main-header"><h1>Manuale d\'Uso</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
         try:
-            # URL RAW del file su GitHub (Sostituisci col tuo link diretto se necessario)
-            # Esempio: "https://raw.githubusercontent.com/TUO_UTENTE/TUO_REPO/main/manuale.md"
             url_manuale = f"https://raw.githubusercontent.com/{st.secrets['github']['user']}/{st.secrets['github']['repo']}/main/manuale.md"
             response = requests.get(url_manuale)
             if response.status_code == 200:
                 st.markdown(f'<div class="manual-container">', unsafe_allow_html=True)
                 st.markdown(response.text)
                 st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.warning("⚠️ Non riesco a leggere il file manuale.md su GitHub. Controlla il link o che il file sia pubblico.")
-        except:
-            st.error("❌ Errore di connessione a GitHub per il Manuale.")
+            else: st.warning("⚠️ Manuale non trovato su GitHub.")
+        except: st.error("❌ Errore connessione Manuale.")
 
     elif "📦" in sel or "✨" in sel:
         is_wish = "✨" in sel
