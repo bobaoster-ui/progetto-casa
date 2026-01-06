@@ -101,6 +101,7 @@ else:
             c_p, c_t = st.columns([1, 1.2])
             with c_p:
                 st.plotly_chart(px.pie(df_r, values='Importo Totale', names='stanza', hole=0.5), use_container_width=True)
+
                 if st.button("📄 PDF"):
                     p = PDF(); p.add_page(); p.set_font('Arial','B',10); p.set_fill_color(46,117,182); p.set_text_color(255,255,255)
                     p.cell(30,10,'Stanza',1,0,'C',1); p.cell(90,10,'Articolo',1,0,'C',1); p.cell(35,10,'Totale',1,0,'C',1); p.cell(35,10,'Versato',1,1,'C',1)
@@ -108,7 +109,18 @@ else:
                     for _, r in df_r.iterrows():
                         y=p.get_y(); p.set_xy(40,y); p.multi_cell(90,10,str(r['DV']).encode('latin-1','replace').decode('latin-1'),1); h=max(p.get_y()-y,10)
                         p.set_xy(10,y); p.cell(30,h,str(r['stanza']),1); p.set_xy(130,y); p.cell(35,h,f"{r['Importo Totale']:,.2f}",1); p.cell(35,h,f"{r['Versato']:,.2f}",1,1)
+
+                    # --- AGGIUNTA TOTALI (INSERISCI DA QUI) ---
+                    p.ln(2); p.set_font('Arial','B',10); p.set_fill_color(220,220,220)
+                    t_i = df_r['Importo Totale'].sum(); t_v = df_r['Versato'].sum()
+                    p.cell(120,10,'TOTALE GENERALE PROPRIETÀ',1,0,'R',1)
+                    p.cell(35,10,f"{t_i:,.2f}",1,0,'C',1)
+                    p.cell(35,10,f"{t_v:,.2f}",1,1,'C',1)
+                    # --- FINE AGGIUNTA ---
+
                     st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
+
+
             c_t.dataframe(df_r[['stanza','DV','Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
     elif sel == "📖 Manuale":
