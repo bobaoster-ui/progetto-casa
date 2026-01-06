@@ -10,7 +10,7 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.10.7", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.10.8", layout="wide", page_icon="🚀")
 
 # --- CONNESSIONE SUPABASE ---
 @st.cache_resource
@@ -19,7 +19,7 @@ def get_supabase():
 
 sb = get_supabase()
 
-# --- STILE (Invariato) ---
+# --- STILE ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
 bc, cc, tc = ("#0e1117", "#1d2129", "#ffffff") if st.session_state.dark_mode else ("#f8f9fc", "#ffffff", "#1f2937")
 grad = "linear-gradient(90deg, #0f2027, #203a43, #2c5364)" if st.session_state.dark_mode else "linear-gradient(90deg, #2e5a88, #4a90e2)"
@@ -45,7 +45,6 @@ class PDF(FPDF):
 
 def clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
-    # Rinominiamo le colonne del DB nei nomi usati dalla logica originale
     mapping = {
         'articolo': 'Articolo', 'acquistato': 'Acquistato', 'costo': 'Costo',
         'importo_totale': 'Importo Totale', 'acquista_sn': 'Acquista S/N',
@@ -82,7 +81,7 @@ else:
 
     if "Riepilogo" in sel:
         st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
-        bud = 15000.0 # Valore default, estraibile da tabella impostazioni se necessario
+        bud = 15000.0
         res = sb.table("arredamento").select("*").execute()
         df_all = clean_df(pd.DataFrame(res.data))
 
@@ -96,12 +95,16 @@ else:
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
 
             st.subheader("🗓️ Scadenzario")
-            sc = df_r[df_r['Data Scadenza'].notna() & (df_r['Versato'] < df_r['Importo Totale'])].copy()
+            # LOGICA SCADENZARIO OTTIMIZZATA
+            sc = df_r[df_r['Data Scadenza'].notna()].copy()
+            sc = sc[sc['Versato'] < sc['Importo Totale']]
             if not sc.empty:
                 sc['gg'] = (sc['Data Scadenza'] - pd.Timestamp(datetime.now().date())).dt.days
                 sc['Stato'] = sc['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
                 sc['Data Scadenza'] = sc['Data Scadenza'].dt.date
                 st.dataframe(sc.sort_values('gg')[['stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
+            else:
+                st.info("Nessuna scadenza imminente trovata.")
 
             c_p, c_t = st.columns([1, 1.2])
             with c_p:
@@ -120,14 +123,12 @@ else:
         is_wish = "✨" in sel
         sn = "Wishlist" if is_wish else sel.replace("📦 ", "").capitalize()
         st.title(f"{sel}")
-
         res = sb.table("arredamento").select("*").eq("stanza", sn).execute()
         df = clean_df(pd.DataFrame(res.data))
 
         if not df.empty:
             is_closed = any(df['Stanza Chiusa'] == True)
             if is_closed and not is_wish: st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn} è completata!</div>', unsafe_allow_html=True)
-
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
             col_t1, col_t2 = st.columns(2)
             col_t1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value-mini">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
@@ -148,7 +149,6 @@ else:
 
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     df_e['Stanza Chiusa'] = check_chiusura
-                    # Logica calcoli originale
                     for i in range(len(df_e)):
                         k = f"note_val_{sn}_{i}"
                         if k in st.session_state: df_e.at[df_e.index[i], 'Note'] = st.session_state[k]
@@ -159,9 +159,7 @@ else:
                             df_e.at[df_e.index[i],'Versato'] = c*q
                             df_e.at[df_e.index[i],'Data Scadenza'] = None
 
-                    # Salvataggio su Supabase
                     sb.table("arredamento").delete().eq("stanza", sn).execute()
-                    # Riconvertiamo i nomi per il DB
                     inv_map = {v: k for k, v in {
                         'articolo': 'Articolo', 'acquistato': 'Acquistato', 'costo': 'Costo',
                         'importo_totale': 'Importo Totale', 'acquista_sn': 'Acquista S/N',
@@ -172,9 +170,7 @@ else:
                     }.items()}
                     df_db = df_e.rename(columns=inv_map)
                     df_db['stanza'] = sn
-                    # Pulizia date per JSON
                     if 'data_scadenza' in df_db.columns:
                         df_db['data_scadenza'] = df_db['data_scadenza'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else None)
-
                     sb.table("arredamento").insert(df_db.to_dict(orient='records')).execute()
                     st.balloons(); st.success("Salvato su Database!"); time.sleep(1); st.rerun()
