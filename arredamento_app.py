@@ -10,7 +10,7 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.10.8", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.10.10", layout="wide", page_icon="🚀")
 
 # --- CONNESSIONE SUPABASE ---
 @st.cache_resource
@@ -27,7 +27,6 @@ st.markdown(f"""<style>
     .stApp {{background-color: {bc}; color: {tc};}}
     .main-header {{background: {grad}; padding: 30px; border-radius: 15px; color: white; margin-bottom: 25px;}}
     .metric-card {{background-color: {cc}; padding: 15px; border-radius: 10px; border-bottom: 4px solid #2e5a88; text-align: center; color: {tc}; margin-bottom: 10px;}}
-    .metric-value-mini {{font-size: 1.4em; font-weight: 700; color: #2e5a88;}}
     .metric-value {{font-size: 1.8em; font-weight: 800; color: #2e5a88;}}
     .gold-seal {{background: linear-gradient(145deg, #ffdf00, #d4af37); padding: 20px; border-radius: 15px; text-align: center; color: black; font-weight: bold; border: 2px solid #b8860b; margin-bottom: 20px; box-shadow: 0px 4px 15px rgba(212, 175, 55, 0.4);}}
 </style>""", unsafe_allow_html=True)
@@ -60,7 +59,9 @@ def clean_df(df):
         if c in df.columns: df[c] = df[c].astype(str).replace(['None', 'nan', '<NA>', 'null', ''], '')
     for c in ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']:
         if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
-    if 'Data Scadenza' in df.columns: df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
+    # Conversione data robusta
+    if 'Data Scadenza' in df.columns:
+        df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
     return df
 
 if "password_correct" not in st.session_state:
@@ -94,29 +95,20 @@ else:
             m3.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
 
-st.subheader("🗓️ Scadenzario")
-            # Convertiamo esplicitamente in data per evitare problemi di formato
-            df_r['Data Scadenza'] = pd.to_datetime(df_r['Data Scadenza'], errors='coerce')
-
-            # Filtriamo: deve esserci una data E deve esserci ancora qualcosa da pagare
+            st.subheader("🗓️ Scadenzario")
+            # Logica corretta: mostriamo se c'è una data E se non è ancora saldato
             sc = df_r[df_r['Data Scadenza'].notna()].copy()
-
-            # Se vuoi vedere la riga anche se è saldata per testare,
-            # commenta temporaneamente la riga qui sotto aggiungendo un #
             sc = sc[sc['Versato'] < sc['Importo Totale']]
 
             if not sc.empty:
                 oggi = pd.Timestamp(datetime.now().date())
                 sc['gg'] = (sc['Data Scadenza'] - oggi).dt.days
                 sc['Stato'] = sc['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
-
-                # Formattazione pulita per la tabella della Proprietà
                 sc_display = sc.sort_values('gg').copy()
                 sc_display['Data Scadenza'] = sc_display['Data Scadenza'].dt.strftime('%d/%m/%Y')
-
                 st.dataframe(sc_display[['stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
             else:
-                st.info("Nessun pagamento residuo con scadenza trovato. (Se l'articolo è già 'Saldato', non apparirà qui)")
+                st.info("Nessuna scadenza imminente trovata.")
 
             c_p, c_t = st.columns([1, 1.2])
             with c_p:
@@ -143,8 +135,8 @@ st.subheader("🗓️ Scadenzario")
             if is_closed and not is_wish: st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn} è completata!</div>', unsafe_allow_html=True)
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
             col_t1, col_t2 = st.columns(2)
-            col_t1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value-mini">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
-            col_t2.markdown(f'<div class="metric-card">PAGATO STANZA<div class="metric-value-mini">{t_ver:,.2f}€</div></div>', unsafe_allow_html=True)
+            col_t1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
+            col_t2.markdown(f'<div class="metric-card">PAGATO STANZA<div class="metric-value">{t_ver:,.2f}€</div></div>', unsafe_allow_html=True)
 
             with st.expander("📝 NOTE"):
                 art = st.selectbox("Seleziona Articolo:", df['DV'].tolist())
