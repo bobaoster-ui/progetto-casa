@@ -4,13 +4,12 @@ from supabase import create_client
 import pandas as pd
 from datetime import datetime
 from fpdf import FPDF
-import time
 
 # --- SICUREZZA ---
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.10.4", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.10.5", layout="wide", page_icon="🚀")
 
 # --- STILE ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -82,13 +81,14 @@ else:
 
     elif sel == "🛠️ Migrazione Database":
         st.title("🚀 Migrazione")
-        # CONTROLLO DIRETTO SULLE CHIAVI PIATTE
-        if "supabase_url" not in st.secrets:
-            st.error("⚠️ Errore critico: Streamlit non legge 'supabase_url' nei Secrets.")
+        # CONTROLLO USANDO LA TUA STRUTTURA [supabase] url / key
+        if "supabase" not in st.secrets:
+            st.error("⚠️ Errore: Non trovo la sezione [supabase] nei Secrets.")
         else:
             if st.button("AVVIA TRASLOCO DATI"):
                 try:
-                    sb = create_client(st.secrets["supabase_url"], st.secrets["supabase_key"])
+                    # QUI USO I TUOI NOMI: secrets -> supabase -> url / key
+                    sb = create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
                     for s in stanze + ["desideri"]:
                         df = conn.read(worksheet=s)
                         for _, row in df.iterrows():
@@ -103,5 +103,5 @@ else:
                                 "versato": float(row.get('Versato', 0))
                             }
                             sb.table("arredamento").insert(d).execute()
-                    st.success("✅ Trasloco completato! Dati caricati correttamente.")
-                except Exception as e: st.error(f"Errore tecnico durante l'invio: {e}")
+                    st.success("✅ Migrazione completata!")
+                except Exception as e: st.error(f"Errore tecnico: {e}")
