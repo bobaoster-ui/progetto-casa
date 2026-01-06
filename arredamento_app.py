@@ -10,7 +10,7 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.10.3", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.10.4", layout="wide", page_icon="🚀")
 
 # --- STILE ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -70,38 +70,38 @@ else:
             c1.markdown(f'<div class="metric-card">IMPEGNATO<div class="metric-value">{conf:,.2f}€</div></div>', unsafe_allow_html=True)
             c2.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.2f}€</div></div>', unsafe_allow_html=True)
             c3.markdown(f'<div class="metric-card">RESIDUO<div class="metric-value">{conf-pag:,.2f}€</div></div>', unsafe_allow_html=True)
-
             if st.button("📄 Genera Report PDF"):
                 p = PDF(); p.add_page(); p.set_font('Arial','B',10)
                 p.set_fill_color(46,117,182); p.set_text_color(255,255,255)
                 p.cell(30,10,'Stanza',1,0,'C',1); p.cell(90,10,'Articolo',1,0,'C',1); p.cell(35,10,'Totale',1,0,'C',1); p.cell(35,10,'Versato',1,1,'C',1)
                 p.set_font('Arial','',9); p.set_text_color(0,0,0)
                 for _, r in df_r.iterrows():
-                    p.cell(30,10, str(r['Stanza']),1)
-                    p.cell(90,10, str(r['DV'])[:45].encode('latin-1','replace').decode('latin-1'),1)
-                    p.cell(35,10, f"{r['Importo Totale']:,.2f}",1)
-                    p.cell(35,10, f"{r['Versato']:,.2f}",1,1)
+                    p.cell(30,10, str(r['Stanza']),1); p.cell(90,10, str(r['DV'])[:45].encode('latin-1','replace').decode('latin-1'),1)
+                    p.cell(35,10, f"{r['Importo Totale']:,.2f}",1); p.cell(35,10, f"{r['Versato']:,.2f}",1,1)
                 st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
 
     elif sel == "🛠️ Migrazione Database":
         st.title("🚀 Migrazione")
-        if st.button("AVVIA TRASLOCO DATI"):
-            try:
-                # CREO IL CLIENT SOLO QUI PER EVITARE ERRORI ALL'AVVIO
-                sb = create_client(st.secrets["supabase_url"], st.secrets["supabase_key"])
-                for s in stanze + ["desideri"]:
-                    df = conn.read(worksheet=s)
-                    for _, row in df.iterrows():
-                        d = {
-                            "articolo": str(row.get('Articolo', row.get('Oggetto', 'N/A'))),
-                            "acquistato": float(row.get('Acquistato', 1)),
-                            "costo": float(row.get('Costo', 0)),
-                            "importo_totale": float(row.get('Importo Totale', 0)),
-                            "acquista_sn": str(row.get('Acquista S/N', 'N')),
-                            "stanza": "Wishlist" if s == "desideri" else s.capitalize(),
-                            "note": str(row.get('Note', '')),
-                            "versato": float(row.get('Versato', 0))
-                        }
-                        sb.table("arredamento").insert(d).execute()
-                st.success("✅ Migrazione completata!")
-            except Exception as e: st.error(f"Errore: {e}")
+        # CONTROLLO DIRETTO SULLE CHIAVI PIATTE
+        if "supabase_url" not in st.secrets:
+            st.error("⚠️ Errore critico: Streamlit non legge 'supabase_url' nei Secrets.")
+        else:
+            if st.button("AVVIA TRASLOCO DATI"):
+                try:
+                    sb = create_client(st.secrets["supabase_url"], st.secrets["supabase_key"])
+                    for s in stanze + ["desideri"]:
+                        df = conn.read(worksheet=s)
+                        for _, row in df.iterrows():
+                            d = {
+                                "articolo": str(row.get('Articolo', row.get('Oggetto', 'N/A'))),
+                                "acquistato": float(row.get('Acquistato', 1)),
+                                "costo": float(row.get('Costo', 0)),
+                                "importo_totale": float(row.get('Importo Totale', 0)),
+                                "acquista_sn": str(row.get('Acquista S/N', 'N')),
+                                "stanza": "Wishlist" if s == "desideri" else s.capitalize(),
+                                "note": str(row.get('Note', '')),
+                                "versato": float(row.get('Versato', 0))
+                            }
+                            sb.table("arredamento").insert(d).execute()
+                    st.success("✅ Trasloco completato! Dati caricati correttamente.")
+                except Exception as e: st.error(f"Errore tecnico durante l'invio: {e}")
