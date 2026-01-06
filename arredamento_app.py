@@ -150,13 +150,13 @@ else:
             with st.form(f"f_{sn}"):
                 check_chiusura = st.checkbox("🔒 Chiudi Stanza (Attiva Sigillo Oro)", value=is_closed) if not is_wish else False
 # --- VERSIONE AGGIORNATA DEL TUO CFG ---
-                cfg = {
+cfg = {
                     "Prezzo Pieno": st.column_config.NumberColumn("Prezzo Pieno", format="%.2f"),
                     "Sconto %": st.column_config.NumberColumn("Sconto %", format="%.2f"),
                     "Versato": st.column_config.NumberColumn("Versato", format="%.2f"),
                     "Acquistato": st.column_config.NumberColumn("Quantità", format="%.2f"),
-                    "Costo": st.column_config.NumberColumn("Costo Unit.", format="%.2f", disabled=True),
-                    "Importo Totale": st.column_config.NumberColumn("Totale", format="%.2f", disabled=True),
+                    "Costo": st.column_config.NumberColumn("Costo Unit.", format="%.2f"),
+                    "Importo Totale": st.column_config.NumberColumn("Totale", format="%.2f"),
                     "Acquista S/N": st.column_config.SelectboxColumn("Acquista S/N", options=["S", "N"]),
                     "Stato Pagamento": st.column_config.SelectboxColumn("Stato Pagamento", options=["", "Acconto", "Saldato", "Preventivo"]),
                     "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"),
@@ -164,7 +164,6 @@ else:
                     "Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri"),
                     "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi")
                 }
-
                 df_e = st.data_editor(df.drop(columns=['DV','stanza']), use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     df_e['Stanza Chiusa'] = check_chiusura
