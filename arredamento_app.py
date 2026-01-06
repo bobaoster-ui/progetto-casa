@@ -63,8 +63,10 @@ else:
     stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
     with st.sidebar:
-        # LOGO UFFICIALE JACOPO
-        st.image("https://i.ibb.co/Xz9kHHz/logo-jacopo.png", use_container_width=True)
+        # RICHIAMO LOGO CORRETTO DA GITHUB
+        try: st.image("logo.png", use_container_width=True)
+        except: pass
+
         st.session_state.dark_mode = st.toggle("🌙 Notte", st.session_state.dark_mode)
         sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze])
         edit_struct = st.toggle("⚙️ Modifica Struttura", False)
@@ -90,6 +92,7 @@ else:
             m2.markdown(f'<div class="metric-card">CONFERMATO<div class="metric-value">{conf:,.0f}€</div></div>', unsafe_allow_html=True)
             m3.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
+
             st.subheader("🗓️ Scadenzario")
             sc = df_r[df_r['Data Scadenza'].notna() & (df_r['Versato'] < df_r['Importo Totale'])].copy()
             if not sc.empty:
@@ -97,6 +100,7 @@ else:
                 sc['Stato'] = sc['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
                 sc['Data Scadenza'] = sc['Data Scadenza'].dt.date
                 st.dataframe(sc.sort_values('gg')[['Stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
+
             c_p, c_t = st.columns([1, 1.2])
             with c_p:
                 st.plotly_chart(px.pie(df_r, values='Importo Totale', names='Stanza', hole=0.5), use_container_width=True)
@@ -157,9 +161,9 @@ else:
                         st.cache_data.clear(); st.balloons(); st.success("Salvato correttamente!"); time.sleep(1); st.rerun()
                     except Exception as e:
                         if "429" in str(e):
-                            st.balloons(); st.success("✅ Salvato su Sheets! Ignora l'errore di quota di Google.")
+                            st.balloons(); st.success("✅ Salvato su Sheets!")
                         else: st.error(f"Errore: {e}")
-        except: st.error("Quota Google raggiunta. Attendi 60 secondi.")
+        except: st.error("Quota Google raggiunta. Attendi un momento.")
 
     elif "✨" in sel:
         st.title("✨ Wishlist")
@@ -169,4 +173,4 @@ else:
             df_ew = st.data_editor(df_w.drop(columns=['DV']), use_container_width=True, hide_index=True, column_config=w_cfg, num_rows="dynamic" if edit_struct else "fixed")
             if st.button("Salva Wishlist"):
                 conn.update(worksheet="desideri", data=df_ew.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
-        except: st.error("Quota Google raggiunta. Attendi un momento.")
+        except: st.error("Quota Google raggiunta.")
