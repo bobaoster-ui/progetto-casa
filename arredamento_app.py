@@ -150,7 +150,8 @@ else:
             with st.form(f"f_{sn}"):
                 check_chiusura = st.checkbox("🔒 Chiudi Stanza (Attiva Sigillo Oro)", value=is_closed) if not is_wish else False
 # --- VERSIONE AGGIORNATA DEL TUO CFG ---
-cfg = {
+
+                cfg = {
                     "Prezzo Pieno": st.column_config.NumberColumn("Prezzo Pieno", format="%.2f"),
                     "Sconto %": st.column_config.NumberColumn("Sconto %", format="%.2f"),
                     "Versato": st.column_config.NumberColumn("Versato", format="%.2f"),
