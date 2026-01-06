@@ -144,13 +144,9 @@ else:
                                 df_e.at[df_e.index[i],'Versato'] = c*q
                                 df_e.at[df_e.index[i],'Data Scadenza'] = pd.NaT
                         except: continue
-                    try:
-                        conn.update(worksheet=sn, data=df_e.fillna(''))
-                        st.cache_data.clear(); st.balloons(); st.success("Salvato correttamente!"); time.sleep(1); st.rerun()
-                    except Exception as e:
-                        if "429" in str(e): st.balloons(); st.success("✅ Salvato su Sheets!")
-                        else: st.error(f"Errore: {e}")
-        except: st.error("Quota Google raggiunta.")
+                    conn.update(worksheet=sn, data=df_e.fillna(''))
+                    st.cache_data.clear(); st.balloons(); st.success("Salvato correttamente!"); time.sleep(1); st.rerun()
+        except: pass
 
     elif "✨" in sel:
         st.title("✨ Wishlist")
@@ -160,4 +156,4 @@ else:
             df_ew = st.data_editor(df_w.drop(columns=['DV']), use_container_width=True, hide_index=True, column_config=w_cfg, num_rows="dynamic" if edit_struct else "fixed")
             if st.button("Salva Wishlist"):
                 conn.update(worksheet="desideri", data=df_ew.fillna('')); st.cache_data.clear(); st.balloons(); st.rerun()
-        except: st.error("Quota Google raggiunta.")
+        except: pass
