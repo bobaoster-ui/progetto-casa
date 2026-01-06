@@ -13,15 +13,13 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.9.14", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.9.15", layout="wide", page_icon="🚀")
 
-# --- INIZIALIZZAZIONE SESSIONE (Fix Errore Immagine 6/12) ---
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = False
-if "password_correct" not in st.session_state:
-    st.session_state.password_correct = False
+# --- INIZIALIZZAZIONE SESSIONE ---
+if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
+if "password_correct" not in st.session_state: st.session_state.password_correct = False
 
-# --- MOTORE PDF (Fix Errore Immagine 4/5/8) ---
+# --- MOTORE PDF ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(46, 117, 182); self.rect(0, 0, 210, 40, 'F')
@@ -64,31 +62,26 @@ def clean_df(df):
         df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
     return df[cols_target]
 
-# --- LOGIN (Etichette aggiornate) ---
+# --- LOGIN ---
 if not st.session_state.password_correct:
     st.title("🔒 Accesso Sistema")
-    # Richiesta: Utente e Password invece di User e Pass
     u = st.text_input("Utente")
     p = st.text_input("Password", type="password")
     if st.button("Entra"):
         if u == st.secrets["auth"]["username"] and p == st.secrets["auth"]["password"]:
-            st.session_state.password_correct = True
-            st.rerun()
-        else:
-            st.error("Credenziali errate")
+            st.session_state.password_correct = True; st.rerun()
+        else: st.error("Credenziali errate")
 else:
-    # --- APP REALE ---
     conn = st.connection("gsheets", type=GSheetsConnection)
     stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
     with st.sidebar:
-        # Ora dark_mode è inizializzato, non darà più errore
         st.session_state.dark_mode = st.toggle("🌙 Modalità Notte", st.session_state.dark_mode)
         sel = st.selectbox("MENU PRINCIPALE", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze])
-        st.markdown("<br>---<br><small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
+        edit_struct = st.toggle("⚙️ Modifica Struttura", False)
+        st.markdown("<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
         if st.button("Esci 🚪"):
-            st.session_state.password_correct = False
-            st.rerun()
+            st.session_state.password_correct = False; st.rerun()
 
     if "Riepilogo" in sel:
         st.title("🏠 Command Center")
@@ -97,10 +90,8 @@ else:
             try:
                 d = clean_df(conn.read(worksheet=s, ttl="1m"))
                 if not d.empty:
-                    # Filtro solo gli articoli confermati (S)
                     dc = d[d['Acquista S/N'].str.upper().str.strip() == 'S'].copy()
-                    dc['Stanza'] = s.capitalize()
-                    all_d.append(dc)
+                    dc['Stanza'] = s.capitalize(); all_d.append(dc)
             except: continue
 
         if all_d:
@@ -111,23 +102,37 @@ else:
             c2.metric("TOTALE PAGATO", f"{pag:,.2f} €")
             c3.metric("RESIDUO DA PAGARE", f"{conf-pag:,.2f} €")
 
-            # Grafico e Tabella
-            col_g, col_t = st.columns([1, 1])
-            with col_g:
-                st.plotly_chart(px.pie(df_r, values='Importo Totale', names='Stanza', hole=0.4, title="Distribuzione Spese"), use_container_width=True)
-            with col_t:
-                st.subheader("Dettaglio Impegni")
-                st.dataframe(df_r[['Stanza', 'Articolo', 'Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
+            # --- SCADENZARIO RIPRISTINATO ---
+            st.subheader("🗓️ Scadenzario Pagamenti")
+            scad = df_r[df_r['Data Scadenza'].notna() & (df_r['Versato'] < df_r['Importo Totale'])].copy()
+            if not scad.empty:
+                scad['Giorni'] = (scad['Data Scadenza'] - pd.Timestamp(datetime.now().date())).dt.days
+                scad['Stato'] = scad['Giorni'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
+                st.dataframe(scad.sort_values('Giorni')[['Stanza','Articolo','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
+            else:
+                st.info("Nessuna scadenza imminente.")
+
+            if st.button("📄 Genera Report PDF"):
+                pdf = PDF(); pdf.add_page(); w = [30, 90, 35, 35]
+                pdf.set_fill_color(46,117,182); pdf.set_text_color(255,255,255); pdf.set_font('Arial','B',10)
+                pdf.cell(w[0],10,'Stanza',1,0,'C',1); pdf.cell(w[1],10,'Articolo',1,0,'C',1)
+                pdf.cell(w[2],10,'Totale',1,0,'C',1); pdf.cell(w[3],10,'Versato',1,1,'C',1)
+                pdf.set_font('Arial', '', 9); pdf.set_text_color(0,0,0)
+                for _, r in df_r.iterrows():
+                    pdf.draw_table_row([r['Stanza'], r['Articolo'], f"{r['Importo Totale']:.2f}", f"{r['Versato']:.2f}"], w)
+
+                buf = io.BytesIO()
+                pdf_out = pdf.output(dest='S')
+                buf.write(pdf_out.encode('latin-1') if isinstance(pdf_out, str) else pdf_out)
+                st.download_button("📥 Scarica Report PDF", buf.getvalue(), "Report_Proprietà_Jacopo.pdf", "application/pdf")
 
     else:
-        # Gestione Stanze e Wishlist (Struttura Unificata)
         is_wish = "Wishlist" in sel
         sn = "desideri" if is_wish else sel.replace("📦 ", "").lower()
         st.title(f"{'✨' if is_wish else '🏠'} {sel.replace('📦 ', '')}")
 
         try:
             df = clean_df(conn.read(worksheet=sn, ttl="0"))
-
             with st.form(f"form_{sn}"):
                 cfg = {
                     "Acquista S/N": st.column_config.SelectboxColumn("Acquista", options=["S", "N"]),
@@ -136,40 +141,29 @@ else:
                     "Link Fattura": st.column_config.LinkColumn("Doc"),
                     "Link": st.column_config.LinkColumn("Sito Web"),
                     "Foto": st.column_config.LinkColumn("📸 Foto"),
-                    "Importo Totale": st.column_config.NumberColumn("Totale (€)", disabled=True),
-                    "Costo": st.column_config.NumberColumn("Costo Unitario (€)")
+                    "Importo Totale": st.column_config.NumberColumn("Totale (€)", disabled=True)
                 }
 
-                df_e = st.data_editor(df, use_container_width=True, hide_index=True, column_config=cfg, num_rows="dynamic")
+                # Attivazione dinamica righe se edit_struct è True
+                df_e = st.data_editor(df, use_container_width=True, hide_index=True, column_config=cfg, num_rows="dynamic" if edit_struct else "fixed")
 
                 if st.form_submit_button("💾 SALVA MODIFICHE"):
                     for i, r in df_e.iterrows():
                         p_p = float(r.get('Prezzo Pieno', 0) or 0)
                         sco = float(r.get('Sconto %', 0) or 0)
                         qta = float(r.get('Acquistato', 1) or 1)
-
-                        # Calcolo Costi
                         c_u = p_p * (1 - (sco/100)) if p_p > 0 else float(r.get('Costo', 0) or 0)
                         tot = c_u * qta
-
                         df_e.at[i, 'Costo'] = c_u
                         df_e.at[i, 'Importo Totale'] = tot
-
                         if str(r.get('Stato Pagamento', "")).strip() == "Saldato":
                             df_e.at[i, 'Versato'] = tot
                             df_e.at[i, 'Data Scadenza'] = pd.NaT
 
                     try:
                         conn.update(worksheet=sn, data=df_e.fillna(''))
-                        st.cache_data.clear()
-                        st.success("✅ Salvataggio completato correttamente!")
-                        time.sleep(1)
-                        st.rerun()
+                        st.cache_data.clear(); st.success("✅ Salvataggio completato!"); time.sleep(1); st.rerun()
                     except Exception as e:
-                        if "429" in str(e):
-                            st.success("✅ Dati salvati su Sheets!")
-                            st.rerun()
-                        else:
-                            st.error(f"Errore durante il salvataggio: {e}")
-        except:
-            st.error("Impossibile connettersi a Google Sheets. Riprova tra 30 secondi.")
+                        if "429" in str(e): st.success("✅ Dati salvati!"); st.rerun()
+                        else: st.error(f"Errore: {e}")
+        except: st.error("Connessione Google Sheets instabile. Riprova.")
