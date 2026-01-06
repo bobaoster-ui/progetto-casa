@@ -79,6 +79,8 @@ else:
         bud = 15000.0
         res = sb.table("arredamento").select("*").execute()
         df_all = clean_df(pd.DataFrame(res.data))
+        if df.empty:
+            df = pd.DataFrame([{"Articolo": "INCOLLA QUI", "Acquistato": 1, "Prezzo Pieno": 0, "Sconto %": 0, "Acquista S/N": "S", "Stato Pagamento": "Preventivo"}])
         if not df_all.empty:
             df_r = df_all[df_all['Acquista S/N'].str.upper().str.strip() == 'S'].copy()
             conf, pag = df_r['Importo Totale'].sum(), df_r['Versato'].sum()
