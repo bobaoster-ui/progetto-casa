@@ -40,7 +40,6 @@ def clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
 
-    # FIX LETTURA SIGILLO (Supporta TRUE, 1 e 1.0)
     if 'Stanza Chiusa' in df.columns:
         df['Stanza Chiusa'] = df['Stanza Chiusa'].apply(lambda x: str(x).upper().strip() in ['TRUE', '1', '1.0'])
     else:
@@ -64,8 +63,8 @@ else:
     stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
     with st.sidebar:
-        try: st.image("logo.png", use_container_width=True)
-        except: pass
+        # LOGO UFFICIALE JACOPO
+        st.image("https://i.ibb.co/Xz9kHHz/logo-jacopo.png", use_container_width=True)
         st.session_state.dark_mode = st.toggle("🌙 Notte", st.session_state.dark_mode)
         sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze])
         edit_struct = st.toggle("⚙️ Modifica Struttura", False)
