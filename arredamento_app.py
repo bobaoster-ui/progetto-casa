@@ -63,7 +63,7 @@ if "password_correct" not in st.session_state:
     if st.button("Accedi"):
         if u == st.secrets["auth"]["username"] and p == st.secrets["auth"]["password"]: st.session_state.password_correct = True; st.rerun()
 else:
-    stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
+    stanze = ["camera", "cucina", "salotto", "tavolo", "lavori", "Desideri"]
     with st.sidebar:
         try: st.image("logo.png", use_container_width=True)
         except: pass
