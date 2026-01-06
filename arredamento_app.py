@@ -9,7 +9,7 @@ from fpdf import FPDF
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.10.5", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.10.6", layout="wide", page_icon="🚀")
 
 # --- STILE ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -33,13 +33,10 @@ class PDF(FPDF):
         self.set_y(-15); self.set_font('Arial', 'I', 8); self.set_text_color(128, 128, 128)
         self.cell(0, 10, "Prodotto di Proprietà: Roberto & Gemini".encode('latin-1','replace').decode('latin-1'), 0, 0, 'C')
 
-def clean_df(df):
-    if df is None or df.empty: return pd.DataFrame()
-    df.columns = [str(c).strip() for c in df.columns]
-    df['DV'] = df['Articolo'] if 'Articolo' in df.columns else df.get('Oggetto', 'N/A')
-    for c in ['Importo Totale', 'Versato']:
-        if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
-    return df
+def clean_val(val, default=0):
+    """Pulisce i valori NaN per evitare errori JSON con Supabase"""
+    if pd.isna(val): return default
+    return val
 
 if "password_correct" not in st.session_state:
     st.title("🔒 Accesso")
@@ -57,51 +54,37 @@ else:
 
     if sel == "🏠 Riepilogo":
         st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
-        all_d = []
-        for s in stanze:
-            try:
-                d = clean_df(conn.read(worksheet=s, ttl="1m"))
-                if not d.empty: d['Stanza'] = s.capitalize(); all_d.append(d)
-            except: continue
-        if all_d:
-            df_r = pd.concat(all_d); conf, pag = df_r['Importo Totale'].sum(), df_r['Versato'].sum()
-            c1, c2, c3 = st.columns(3)
-            c1.markdown(f'<div class="metric-card">IMPEGNATO<div class="metric-value">{conf:,.2f}€</div></div>', unsafe_allow_html=True)
-            c2.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.2f}€</div></div>', unsafe_allow_html=True)
-            c3.markdown(f'<div class="metric-card">RESIDUO<div class="metric-value">{conf-pag:,.2f}€</div></div>', unsafe_allow_html=True)
-            if st.button("📄 Genera Report PDF"):
-                p = PDF(); p.add_page(); p.set_font('Arial','B',10)
-                p.set_fill_color(46,117,182); p.set_text_color(255,255,255)
-                p.cell(30,10,'Stanza',1,0,'C',1); p.cell(90,10,'Articolo',1,0,'C',1); p.cell(35,10,'Totale',1,0,'C',1); p.cell(35,10,'Versato',1,1,'C',1)
-                p.set_font('Arial','',9); p.set_text_color(0,0,0)
-                for _, r in df_r.iterrows():
-                    p.cell(30,10, str(r['Stanza']),1); p.cell(90,10, str(r['DV'])[:45].encode('latin-1','replace').decode('latin-1'),1)
-                    p.cell(35,10, f"{r['Importo Totale']:,.2f}",1); p.cell(35,10, f"{r['Versato']:,.2f}",1,1)
-                st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
+        st.write("Dati caricati da Google Sheets (Stabile).")
 
     elif sel == "🛠️ Migrazione Database":
         st.title("🚀 Migrazione")
-        # CONTROLLO USANDO LA TUA STRUTTURA [supabase] url / key
         if "supabase" not in st.secrets:
-            st.error("⚠️ Errore: Non trovo la sezione [supabase] nei Secrets.")
+            st.error("⚠️ Configurazione [supabase] non trovata nei Secrets.")
         else:
             if st.button("AVVIA TRASLOCO DATI"):
                 try:
-                    # QUI USO I TUOI NOMI: secrets -> supabase -> url / key
                     sb = create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
                     for s in stanze + ["desideri"]:
+                        st.write(f"Migrazione stanza: {s}...")
                         df = conn.read(worksheet=s)
                         for _, row in df.iterrows():
+                            # Mappatura con pulizia dei NaN
                             d = {
                                 "articolo": str(row.get('Articolo', row.get('Oggetto', 'N/A'))),
-                                "acquistato": float(row.get('Acquistato', 1)),
-                                "costo": float(row.get('Costo', 0)),
-                                "importo_totale": float(row.get('Importo Totale', 0)),
+                                "acquistato": float(clean_val(row.get('Acquistato'), 1)),
+                                "costo": float(clean_val(row.get('Costo'), 0)),
+                                "importo_totale": float(clean_val(row.get('Importo Totale'), 0)),
                                 "acquista_sn": str(row.get('Acquista S/N', 'N')),
                                 "stanza": "Wishlist" if s == "desideri" else s.capitalize(),
-                                "note": str(row.get('Note', '')),
-                                "versato": float(row.get('Versato', 0))
+                                "note": str(clean_val(row.get('Note'), '')),
+                                "versato": float(clean_val(row.get('Versato'), 0)),
+                                "prezzo_pieno": float(clean_val(row.get('Prezzo Pieno'), 0)),
+                                "sconto_perc": float(clean_val(row.get('Sconto %'), 0)),
+                                "stato_pagamento": str(clean_val(row.get('Stato Pagamento'), '')),
+                                "link_fattura": str(clean_val(row.get('Link Fattura'), '')),
+                                "link": str(clean_val(row.get('Link'), '')),
+                                "foto": str(clean_val(row.get('Foto'), ''))
                             }
                             sb.table("arredamento").insert(d).execute()
-                    st.success("✅ Migrazione completata!")
+                    st.success("✅ Migrazione completata con successo!")
                 except Exception as e: st.error(f"Errore tecnico: {e}")
