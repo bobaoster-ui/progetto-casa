@@ -11,7 +11,7 @@ import requests
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.10.13", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.10.14", layout="wide", page_icon="🚀")
 
 # --- CONNESSIONE SUPABASE ---
 @st.cache_resource
@@ -34,7 +34,6 @@ st.markdown(f"""<style>
     .manual-container {{background-color: {cc}; padding: 30px; border-radius: 15px; border: 1px solid #e0e0e0; line-height: 1.6;}}
 </style>""", unsafe_allow_html=True)
 
-# --- CLASSE PDF AGGIORNATA ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(46, 117, 182); self.rect(0, 0, 210, 40, 'F')
@@ -55,7 +54,7 @@ def clean_df(df):
     for c in ['Note', 'Acquista S/N', 'Stato Pagamento', 'Link Fattura', 'Link', 'Foto']:
         if c in df.columns: df[c] = df[c].astype(str).replace(['None', 'nan', '<NA>', 'null', ''], '')
     for c in ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']:
-        if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
+        if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0).round(2)
     if 'Data Scadenza' in df.columns: df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
     return df
 
@@ -113,7 +112,7 @@ else:
             with c_p:
                 st.plotly_chart(px.pie(df_r, values='Importo Totale', names='stanza', hole=0.5), use_container_width=True)
                 if st.button("📄 Genera Report PDF"):
-                    p = PDF(); p.add_page(); p.set_font('Arial','B',10); p.set_fill_color(46,117,182); p.set_text_color(255,255,255)
+                    p = PDF(); p.add_page(); p.set_font('Arial','B',10); p.set_fill_color(46, 117, 182); p.set_text_color(255, 255, 255)
                     p.cell(30,10,'Stanza',1,0,'C',1); p.cell(90,10,'Articolo',1,0,'C',1); p.cell(35,10,'Totale',1,0,'C',1); p.cell(35,10,'Versato',1,1,'C',1)
                     p.set_font('Arial','',9); p.set_text_color(0,0,0)
                     for _, r in df_r.iterrows():
@@ -122,7 +121,7 @@ else:
                     p.ln(10); p.set_font('Arial','B',11); p.cell(0,10,'RIEPILOGO FINANZIARIO',ln=True)
                     p.set_font('Arial','',10); p.cell(100,8,f'Budget Iniziale: {bud:,.2f} EUR'); p.cell(0,8,f'Totale Confermato: {conf:,.2f} EUR',ln=True)
                     p.cell(100,8,f'Totale Pagato: {pag:,.2f} EUR'); p.set_text_color(40,167,69); p.cell(0,8,f'RISPARMIO: {risparmio_totale:,.2f} EUR',ln=True)
-                    st.download_button("📥 Scarica PDF Corretto", bytes(p.output(dest='S')), "Report_Jacopo_V22.pdf")
+                    st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report_Jacopo.pdf")
             c_t.dataframe(df_r[['stanza','DV','Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
     elif sel == "📖 Manuale":
@@ -138,7 +137,6 @@ else:
         except: st.error("❌ Errore connessione Manuale.")
 
     elif "📦" in sel or "✨" in sel:
-        # (Il resto del codice delle stanze rimane identico e protetto)
         is_wish = "✨" in sel
         sn = "Wishlist" if is_wish else sel.replace("📦 ", "").capitalize()
         st.title(f"{sel}")
@@ -160,7 +158,15 @@ else:
                 if st.button("Conferma Nota"): st.session_state[nt_key] = nt; st.success("Nota pronta!")
             with st.form(f"f_{sn}"):
                 check_chiusura = st.checkbox("🔒 Chiudi Stanza (Attiva Sigillo Oro)", value=is_closed) if not is_wish else False
-                cfg = {"Acquista S/N": st.column_config.SelectboxColumn("Acquista S/N", options=["S", "N"]), "Stato Pagamento": st.column_config.SelectboxColumn("Stato Pagamento", options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri"), "Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri"), "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi")}
+                cfg = {
+                    "Acquista S/N": st.column_config.SelectboxColumn("Acquista S/N", options=["S", "N"]),
+                    "Stato Pagamento": st.column_config.SelectboxColumn("Stato Pagamento", options=["", "Acconto", "Saldato", "Preventivo"]),
+                    "Sconto %": st.column_config.NumberColumn("Sconto %", format="%d%%"), # <--- SIMBOLO % AGGIUNTO
+                    "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"),
+                    "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri"),
+                    "Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri"),
+                    "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi")
+                }
                 df_e = st.data_editor(df.drop(columns=['DV','stanza']), use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     df_e['Stanza Chiusa'] = check_chiusura
@@ -168,11 +174,15 @@ else:
                         k = f"note_val_{sn}_{i}"
                         if k in st.session_state: df_e.at[df_e.index[i], 'Note'] = st.session_state[k]
                         p, s, q = float(df_e.iloc[i].get('Prezzo Pieno',0)), float(df_e.iloc[i].get('Sconto %',0)), float(df_e.iloc[i].get('Acquistato',1))
-                        c = p * (1-(s/100)) if p>0 else float(df_e.iloc[i].get('Costo',0))
-                        df_e.at[df_e.index[i],'Costo'] = c; df_e.at[df_e.index[i],'Importo Totale'] = c*q
+                        # Calcolo pulito con arrotondamento
+                        c = round(p * (1-(s/100)), 2) if p>0 else round(float(df_e.iloc[i].get('Costo',0)), 2)
+                        df_e.at[df_e.index[i],'Costo'] = c
+                        df_e.at[df_e.index[i],'Importo Totale'] = round(c*q, 2)
+                        df_e.at[df_e.index[i],'Versato'] = round(float(df_e.iloc[i].get('Versato', 0)), 2)
                         if "Saldato" in str(df_e.iloc[i].get('Stato Pagamento','')):
-                            df_e.at[df_e.index[i],'Versato'] = c*q
+                            df_e.at[df_e.index[i],'Versato'] = round(c*q, 2)
                             df_e.at[df_e.index[i],'Data Scadenza'] = None
+
                     sb.table("arredamento").delete().eq("stanza", sn).execute()
                     inv_map = {v: k for k, v in {'articolo': 'Articolo', 'acquistato': 'Acquistato', 'costo': 'Costo', 'importo_totale': 'Importo Totale', 'acquista_sn': 'Acquista S/N', 'note': 'Note', 'versato': 'Versato', 'prezzo_pieno': 'Prezzo Pieno', 'sconto_perc': 'Sconto %', 'stato_pagamento': 'Stato Pagamento', 'link_fattura': 'Link Fattura', 'link': 'Link', 'foto': 'Foto', 'data_scadenza': 'Data Scadenza', 'stanza_chiusa': 'Stanza Chiusa'}.items()}
                     df_db = df_e.rename(columns=inv_map)
@@ -180,4 +190,4 @@ else:
                     if 'data_scadenza' in df_db.columns:
                         df_db['data_scadenza'] = df_db['data_scadenza'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else None)
                     sb.table("arredamento").insert(df_db.to_dict(orient='records')).execute()
-                    st.balloons(); st.success("Salvato su Database!"); time.sleep(1); st.rerun()
+                    st.balloons(); st.success("Salvato e protetto!"); time.sleep(1); st.rerun()
