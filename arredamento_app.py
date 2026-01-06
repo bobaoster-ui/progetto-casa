@@ -39,12 +39,10 @@ class PDF(FPDF):
 def clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
     df.columns = [str(c).strip() for c in df.columns]
-
     if 'Stanza Chiusa' in df.columns:
         df['Stanza Chiusa'] = df['Stanza Chiusa'].apply(lambda x: str(x).upper().strip() in ['TRUE', '1', '1.0'])
     else:
         df['Stanza Chiusa'] = False
-
     df['DV'] = df['Articolo'] if 'Articolo' in df.columns else df.get('Oggetto', 'N/A')
     for c in ['Note', 'Acquista S/N', 'S/N', 'Stato Pagamento', 'Stato', 'Link Fattura', 'Link', 'Foto']:
         if c in df.columns: df[c] = df[c].astype(str).replace(['None', 'nan', '<NA>', 'null', ''], '')
@@ -61,12 +59,9 @@ if "password_correct" not in st.session_state:
 else:
     conn = st.connection("gsheets", type=GSheetsConnection)
     stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
-
     with st.sidebar:
-        # RICHIAMO LOGO CORRETTO DA GITHUB
         try: st.image("logo.png", use_container_width=True)
         except: pass
-
         st.session_state.dark_mode = st.toggle("🌙 Notte", st.session_state.dark_mode)
         sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze])
         edit_struct = st.toggle("⚙️ Modifica Struttura", False)
@@ -92,7 +87,6 @@ else:
             m2.markdown(f'<div class="metric-card">CONFERMATO<div class="metric-value">{conf:,.0f}€</div></div>', unsafe_allow_html=True)
             m3.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
-
             st.subheader("🗓️ Scadenzario")
             sc = df_r[df_r['Data Scadenza'].notna() & (df_r['Versato'] < df_r['Importo Totale'])].copy()
             if not sc.empty:
@@ -100,7 +94,6 @@ else:
                 sc['Stato'] = sc['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
                 sc['Data Scadenza'] = sc['Data Scadenza'].dt.date
                 st.dataframe(sc.sort_values('gg')[['Stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
-
             c_p, c_t = st.columns([1, 1.2])
             with c_p:
                 st.plotly_chart(px.pie(df_r, values='Importo Totale', names='Stanza', hole=0.5), use_container_width=True)
@@ -111,6 +104,8 @@ else:
                     for _, r in df_r.iterrows():
                         y=p.get_y(); p.set_xy(40,y); p.multi_cell(90,10,str(r['DV']).encode('latin-1','replace').decode('latin-1'),1); h=max(p.get_y()-y,10)
                         p.set_xy(10,y); p.cell(30,h,str(r['Stanza']),1); p.set_xy(130,y); p.cell(35,h,f"{r['Importo Totale']:,.2f}",1); p.cell(35,h,f"{r['Versato']:,.2f}",1,1)
+                    p.set_font('Arial','B',10); p.set_fill_color(240,240,240)
+                    p.cell(120,10,'TOTALI GENERALI',1,0,'R',1); p.cell(35,10,f"{conf:,.2f}",1,0,'R',1); p.cell(35,10,f"{pag:,.2f}",1,1,'R',1)
                     st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
             c_t.dataframe(df_r[['Stanza','DV','Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
@@ -119,16 +114,12 @@ else:
         try:
             df = clean_df(conn.read(worksheet=sn, ttl="0"))
             is_closed = any(df['Stanza Chiusa'] == True) if 'Stanza Chiusa' in df.columns else False
-            if is_closed:
-                st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è completata!</div>', unsafe_allow_html=True)
-
+            if is_closed: st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn.capitalize()} è completata!</div>', unsafe_allow_html=True)
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
             col_t1, col_t2 = st.columns(2)
             col_t1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value-mini">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
             col_t2.markdown(f'<div class="metric-card">PAGATO STANZA<div class="metric-value-mini">{t_ver:,.2f}€</div></div>', unsafe_allow_html=True)
-
             c_sn, c_st = ('Acquista S/N' if 'Acquista S/N' in df.columns else 'S/N'), ('Stato Pagamento' if 'Stato Pagamento' in df.columns else 'Stato')
-
             with st.expander("📝 NOTE"):
                 art = st.selectbox("Seleziona Articolo:", df['DV'].tolist())
                 idx_n = df[df['DV'] == art].index[0]
@@ -136,12 +127,10 @@ else:
                 if nt_key not in st.session_state: st.session_state[nt_key] = str(df.at[idx_n, 'Note'])
                 nt = st.text_area("Nota:", value=st.session_state[nt_key], height=100)
                 if st.button("Conferma Nota"): st.session_state[nt_key] = nt; st.success("Nota pronta!")
-
             with st.form(f"f_{sn}"):
                 check_chiusura = st.checkbox("🔒 Chiudi Stanza (Attiva Sigillo Oro)", value=is_closed)
                 cfg = {c_sn: st.column_config.SelectboxColumn(c_sn, options=["S", "N"]), c_st: st.column_config.SelectboxColumn(c_st, options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri")}
                 df_e = st.data_editor(df.drop(columns=['DV']), use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
-
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     df_e['Stanza Chiusa'] = "TRUE" if check_chiusura else "FALSE"
                     for i in range(len(df_e)):
@@ -155,15 +144,13 @@ else:
                                 df_e.at[df_e.index[i],'Versato'] = c*q
                                 df_e.at[df_e.index[i],'Data Scadenza'] = pd.NaT
                         except: continue
-
                     try:
                         conn.update(worksheet=sn, data=df_e.fillna(''))
                         st.cache_data.clear(); st.balloons(); st.success("Salvato correttamente!"); time.sleep(1); st.rerun()
                     except Exception as e:
-                        if "429" in str(e):
-                            st.balloons(); st.success("✅ Salvato su Sheets!")
+                        if "429" in str(e): st.balloons(); st.success("✅ Salvato su Sheets!")
                         else: st.error(f"Errore: {e}")
-        except: st.error("Quota Google raggiunta. Attendi un momento.")
+        except: st.error("Quota Google raggiunta.")
 
     elif "✨" in sel:
         st.title("✨ Wishlist")
