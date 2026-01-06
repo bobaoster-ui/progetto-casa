@@ -11,7 +11,7 @@ import requests
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.10.12", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.10.13", layout="wide", page_icon="🚀")
 
 # --- CONNESSIONE SUPABASE ---
 @st.cache_resource
@@ -29,21 +29,22 @@ st.markdown(f"""<style>
     .main-header {{background: {grad}; padding: 30px; border-radius: 15px; color: white; margin-bottom: 25px;}}
     .metric-card {{background-color: {cc}; padding: 15px; border-radius: 10px; border-bottom: 4px solid #2e5a88; text-align: center; color: {tc}; margin-bottom: 10px;}}
     .metric-value {{font-size: 1.8em; font-weight: 800; color: #2e5a88;}}
-    .metric-savings {{font-size: 1.8em; font-weight: 800; color: #28a745;}} /* Verde per il risparmio */
+    .metric-savings {{font-size: 1.8em; font-weight: 800; color: #28a745;}}
     .gold-seal {{background: linear-gradient(145deg, #ffdf00, #d4af37); padding: 20px; border-radius: 15px; text-align: center; color: black; font-weight: bold; border: 2px solid #b8860b; margin-bottom: 20px; box-shadow: 0px 4px 15px rgba(212, 175, 55, 0.4);}}
     .manual-container {{background-color: {cc}; padding: 30px; border-radius: 15px; border: 1px solid #e0e0e0; line-height: 1.6;}}
 </style>""", unsafe_allow_html=True)
 
+# --- CLASSE PDF AGGIORNATA ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(46, 117, 182); self.rect(0, 0, 210, 40, 'F')
         self.set_font('Arial', 'B', 16); self.set_text_color(255, 255, 255)
         self.cell(0, 15, 'ESTRATTO CONTO ARREDAMENTO', ln=True, align='C')
-        self.set_font('Arial', 'I', 10); t = f'Proprietà: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
-        self.cell(0, 10, t.encode('latin-1','replace').decode('latin-1'), ln=True, align='C'); self.ln(15)
+        self.set_font('Arial', 'I', 10); t = f'Proprieta: Jacopo - Report del {datetime.now().strftime("%d/%m/%Y")}'
+        self.cell(0, 10, t, ln=True, align='C'); self.ln(15)
     def footer(self):
         self.set_y(-15); self.set_font('Arial', 'I', 8); self.set_text_color(128, 128, 128)
-        self.cell(0, 10, "Prodotto di Proprietà: Roberto & Gemini".encode('latin-1','replace').decode('latin-1'), 0, 0, 'C')
+        self.cell(0, 10, "Prodotto di Proprieta: Roberto & Gemini", 0, 0, 'C')
 
 def clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
@@ -71,11 +72,11 @@ else:
         st.session_state.dark_mode = st.toggle("🌙 Notte", st.session_state.dark_mode)
         sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze] + ["📖 Manuale"])
         edit_struct = st.toggle("⚙️ Modifica Struttura", False)
-        st.markdown("<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
+        st.markdown("<br>---<br>✨ **Roberto & Gemini**<br><small>Proprieta: Jacopo</small>", unsafe_allow_html=True)
         if st.button("Logout 🚪"): st.session_state.clear(); st.rerun()
 
     if sel == "🏠 Riepilogo":
-        st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
+        st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprieta: Jacopo</p></div>', unsafe_allow_html=True)
         bud = 15000.0
         res = sb.table("arredamento").select("*").execute()
         df_all = clean_df(pd.DataFrame(res.data))
@@ -83,21 +84,15 @@ else:
         if not df_all.empty:
             df_r = df_all[df_all['Acquista S/N'].str.upper().str.strip() == 'S'].copy()
             conf, pag = df_r['Importo Totale'].sum(), df_r['Versato'].sum()
-
-            # --- ANALISI RISPARMIO ---
-            # Calcoliamo il valore teorico (Prezzo Pieno * Quantità) vs Importo Totale (quello scontato)
             valore_teorico = (df_r['Prezzo Pieno'] * df_r['Acquistato']).sum()
             risparmio_totale = valore_teorico - conf
-            # --------------------------
 
-            # Prima riga metriche (Budget e Pagamenti)
             m1, m2, m3, m4 = st.columns(4)
             m1.markdown(f'<div class="metric-card">BUDGET<div class="metric-value">{bud:,.0f}€</div></div>', unsafe_allow_html=True)
             m2.markdown(f'<div class="metric-card">CONFERMATO<div class="metric-value">{conf:,.0f}€</div></div>', unsafe_allow_html=True)
             m3.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
 
-            # Seconda riga metriche (Nuova: Analisi Risparmio)
             s1, s2 = st.columns(2)
             s1.markdown(f'<div class="metric-card">VALORE REALE MERCE<div class="metric-value">{valore_teorico:,.0f}€</div></div>', unsafe_allow_html=True)
             s2.markdown(f'<div class="metric-card">RISPARMIO TOTALIZZATO 🟢<div class="metric-savings">{risparmio_totale:,.0f}€</div></div>', unsafe_allow_html=True)
@@ -117,18 +112,21 @@ else:
             c_p, c_t = st.columns([1, 1.2])
             with c_p:
                 st.plotly_chart(px.pie(df_r, values='Importo Totale', names='stanza', hole=0.5), use_container_width=True)
-                if st.button("📄 PDF"):
+                if st.button("📄 Genera Report PDF"):
                     p = PDF(); p.add_page(); p.set_font('Arial','B',10); p.set_fill_color(46,117,182); p.set_text_color(255,255,255)
                     p.cell(30,10,'Stanza',1,0,'C',1); p.cell(90,10,'Articolo',1,0,'C',1); p.cell(35,10,'Totale',1,0,'C',1); p.cell(35,10,'Versato',1,1,'C',1)
                     p.set_font('Arial','',9); p.set_text_color(0,0,0)
                     for _, r in df_r.iterrows():
-                        y=p.get_y(); p.set_xy(40,y); p.multi_cell(90,10,str(r['DV']).encode('latin-1','replace').decode('latin-1'),1); h=max(p.get_y()-y,10)
+                        y=p.get_y(); p.set_xy(40,y); p.multi_cell(90,10,str(r['DV']),1); h=max(p.get_y()-y,10)
                         p.set_xy(10,y); p.cell(30,h,str(r['stanza']),1); p.set_xy(130,y); p.cell(35,h,f"{r['Importo Totale']:,.2f}",1); p.cell(35,h,f"{r['Versato']:,.2f}",1,1)
-                    st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
+                    p.ln(10); p.set_font('Arial','B',11); p.cell(0,10,'RIEPILOGO FINANZIARIO',ln=True)
+                    p.set_font('Arial','',10); p.cell(100,8,f'Budget Iniziale: {bud:,.2f} EUR'); p.cell(0,8,f'Totale Confermato: {conf:,.2f} EUR',ln=True)
+                    p.cell(100,8,f'Totale Pagato: {pag:,.2f} EUR'); p.set_text_color(40,167,69); p.cell(0,8,f'RISPARMIO: {risparmio_totale:,.2f} EUR',ln=True)
+                    st.download_button("📥 Scarica PDF Corretto", bytes(p.output(dest='S')), "Report_Jacopo_V22.pdf")
             c_t.dataframe(df_r[['stanza','DV','Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
     elif sel == "📖 Manuale":
-        st.markdown('<div class="main-header"><h1>Manuale d\'Uso</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
+        st.markdown('<div class="main-header"><h1>Manuale d\'Uso</h1><p>Proprieta: Jacopo</p></div>', unsafe_allow_html=True)
         try:
             url_manuale = f"https://raw.githubusercontent.com/{st.secrets['github']['user']}/{st.secrets['github']['repo']}/main/manuale.md"
             response = requests.get(url_manuale)
@@ -140,6 +138,7 @@ else:
         except: st.error("❌ Errore connessione Manuale.")
 
     elif "📦" in sel or "✨" in sel:
+        # (Il resto del codice delle stanze rimane identico e protetto)
         is_wish = "✨" in sel
         sn = "Wishlist" if is_wish else sel.replace("📦 ", "").capitalize()
         st.title(f"{sel}")
@@ -147,7 +146,7 @@ else:
         df = clean_df(pd.DataFrame(res.data))
         if not df.empty:
             is_closed = any(df['Stanza Chiusa'] == True)
-            if is_closed and not is_wish: st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn} è completata!</div>', unsafe_allow_html=True)
+            if is_closed and not is_wish: st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn} e completata!</div>', unsafe_allow_html=True)
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
             c1, c2 = st.columns(2)
             c1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
