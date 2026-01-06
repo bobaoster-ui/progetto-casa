@@ -10,17 +10,17 @@ import time
 # --- REGOLE DELLA PROPRIETÀ ---
 # La parola "Proprietà" si scrive con la "à" accentata.
 
-if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
-    st.error("⚠️ LICENZA NON TROVATA"); st.stop()
-
-st.set_page_config(page_title="Monitoraggio Arredamento V22.9.23", layout="wide", page_icon="🚀")
-
-# --- INIZIALIZZAZIONE ---
+# 1. INIZIALIZZAZIONE (Fix Errore Immagine 1)
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
 if "password_correct" not in st.session_state: st.session_state.password_correct = False
 if "budget_target" not in st.session_state: st.session_state.budget_target = 15000.0
 
-# --- MOTORE PDF (Fix Sovrapposizione e Download) ---
+if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
+    st.error("⚠️ LICENZA NON TROVATA"); st.stop()
+
+st.set_page_config(page_title="Monitoraggio Arredamento V22.9.25", layout="wide", page_icon="🚀")
+
+# --- MOTORE PDF (Anti-Sovrapposizione e Fix Download) ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(46, 117, 182); self.rect(0, 0, 210, 40, 'F')
@@ -33,18 +33,15 @@ class PDF(FPDF):
 
     def add_item_row(self, data, w):
         self.set_font('Arial', '', 9); self.set_text_color(0, 0, 0)
-        # Calcolo altezza riga per evitare sovrapposizioni (Fix Immagine 8)
         lines = [len(self.multi_cell(w[i], 8, str(txt), split_only=True)) for i, txt in enumerate(data)]
         h = max(lines) * 8
         if h < 10: h = 10
         if self.get_y() + h > 270: self.add_page()
-
         curr_x, curr_y = self.get_x(), self.get_y()
         for i, txt in enumerate(data):
             self.set_xy(curr_x + sum(w[:i]), curr_y)
-            clean_txt = str(txt).encode('latin-1','replace').decode('latin-1')
-            self.multi_cell(w[i], h, clean_txt, border=1, align='L' if i < 2 else 'R')
-        self.set_y(curr_y + h) # Sposta il cursore oltre la riga appena scritta
+            self.multi_cell(w[i], h, str(txt).encode('latin-1','replace').decode('latin-1'), border=1, align='L' if i < 2 else 'R')
+        self.set_y(curr_y + h)
 
 def clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
@@ -73,14 +70,15 @@ else:
     stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
     with st.sidebar:
-        # LOGO UFFICIALE JACOPO (Immagine logo.png)
+        # LOGO UFFICIALE (Fix logo.png)
         st.image("https://i.ibb.co/Xz9kHHz/logo-jacopo.png", width=180)
         st.session_state.dark_mode = st.toggle("🌙 Modalità Notte", st.session_state.dark_mode)
-        sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze])
-        st.session_state.budget_target = st.number_input("Budget Obiettivo (€)", value=st.session_state.budget_target, step=500.0)
+        sel = st.selectbox("MENU PRINCIPALE", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze])
+        st.markdown("---")
+        st.session_state.budget_target = st.number_input("💰 Budget Obiettivo", value=st.session_state.budget_target, step=500.0)
         edit_struct = st.toggle("⚙️ Modifica Struttura", False)
         st.markdown("---")
-        st.markdown("✨ **Roberto & Gemini**\n\nProprietà: Jacopo")
+        st.markdown(f"✨ **Roberto & Gemini**\n\nProprietà: Jacopo")
         if st.button("Esci 🚪"): st.session_state.password_correct = False; st.rerun()
 
     if "Riepilogo" in sel:
@@ -100,30 +98,38 @@ else:
             c1, c2, c3 = st.columns(3)
             c1.metric("TOTALE IMPEGNATO", f"{conf:,.2f} €")
             c2.metric("TOTALE PAGATO", f"{pag:,.2f} €")
-            c3.metric("RESIDUO", f"{conf-pag:,.2f} €")
+            c3.metric("RESIDUO DA PAGARE", f"{conf-pag:,.2f} €")
 
-            col_chart, col_scad = st.columns([1, 1.2])
-            with col_chart:
+            col_sx, col_dx = st.columns([1, 1.2])
+            with col_sx:
                 st.plotly_chart(px.pie(df_r, values='Importo Totale', names='Stanza', hole=0.4, title="Spesa/Stanza"), use_container_width=True)
-            with col_scad:
-                st.subheader("🗓️ Scadenzario")
+
+            with col_dx:
+                # RIPRISTINO SCADENZIARIO (Fix Immagine 10)
+                st.subheader("🗓️ Scadenzario Pagamenti")
                 scad = df_r[df_r['Data Scadenza'].notna() & (df_r['Versato'] < df_r['Importo Totale'])].copy()
                 if not scad.empty:
-                    scad['Stato'] = (scad['Data Scadenza'] - pd.Timestamp(datetime.now().date())).dt.days.apply(lambda x: "🔴" if x < 0 else "🟠")
-                    st.dataframe(scad[['Stanza','Articolo','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
+                    scad = scad.sort_values('Data Scadenza')
+                    st.dataframe(scad[['Stanza','Articolo','Data Scadenza']], use_container_width=True, hide_index=True)
+                else:
+                    st.info("✅ Nessun pagamento in scadenza trovato.")
 
-            if st.button("📄 Genera Report PDF"):
+            st.subheader("🛒 Lista Dettagliata Acquisti")
+            st.dataframe(df_r[['Stanza', 'Articolo', 'Importo Totale', 'Versato', 'Stato Pagamento']], use_container_width=True, hide_index=True)
+
+            if st.button("📄 Esporta Report PDF"):
                 pdf = PDF(); pdf.add_page(); w = [30, 90, 35, 35]
                 pdf.set_fill_color(46, 117, 182); pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 10)
-                for i, h in enumerate(['Stanza', 'Articolo', 'Totale', 'Versato']): pdf.cell(w[i], 10, h, 1, 0, 'C', 1)
-                pdf.ln()
+                pdf.cell(w[0], 10, 'Stanza', 1, 0, 'C', 1); pdf.cell(w[1], 10, 'Articolo', 1, 0, 'C', 1)
+                pdf.cell(w[2], 10, 'Totale', 1, 0, 'C', 1); pdf.cell(w[3], 10, 'Versato', 1, 1, 'C', 1)
                 for _, r in df_r.iterrows():
                     pdf.add_item_row([r['Stanza'], r['Articolo'], f"{r['Importo Totale']:.2f}", f"{r['Versato']:.2f}"], w)
 
-                # Fix Download (Immagine 9, 11)
-                buf = io.BytesIO()
-                buf.write(pdf.output(dest='S').encode('latin-1'))
-                st.download_button("📥 Scarica PDF", buf.getvalue(), "Report_Jacopo.pdf", "application/pdf")
+                output_pdf = pdf.output(dest='S').encode('latin-1')
+                st.download_button("📥 Scarica Report PDF", output_pdf, "Report_Jacopo.pdf", "application/pdf")
+        else:
+            st.warning("Nessun acquisto confermato trovato.")
+
     else:
         sn = "desideri" if "Wishlist" in sel else sel.replace("📦 ", "").lower()
         st.title(f"{sel}")
@@ -145,5 +151,5 @@ else:
                         df_e.at[i, 'Costo'], df_e.at[i, 'Importo Totale'] = c_u, c_u * float(r.get('Acquistato',1))
                         if str(r.get('Stato Pagamento', "")).strip() == "Saldato": df_e.at[i, 'Versato'] = df_e.at[i, 'Importo Totale']
                     conn.update(worksheet=sn, data=df_e.fillna(''))
-                    st.cache_data.clear(); st.success("✅ Salvato!"); time.sleep(1); st.rerun()
+                    st.cache_data.clear(); st.success("✅ Modifiche salvate!"); time.sleep(1); st.rerun()
         except Exception as e: st.error(f"Errore connessione: {e}")
