@@ -5,12 +5,13 @@ import plotly.express as px
 from datetime import datetime
 from fpdf import FPDF
 import time
+import requests
 
 # --- SICUREZZA ---
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.10.10", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.10.11", layout="wide", page_icon="🚀")
 
 # --- CONNESSIONE SUPABASE ---
 @st.cache_resource
@@ -29,6 +30,7 @@ st.markdown(f"""<style>
     .metric-card {{background-color: {cc}; padding: 15px; border-radius: 10px; border-bottom: 4px solid #2e5a88; text-align: center; color: {tc}; margin-bottom: 10px;}}
     .metric-value {{font-size: 1.8em; font-weight: 800; color: #2e5a88;}}
     .gold-seal {{background: linear-gradient(145deg, #ffdf00, #d4af37); padding: 20px; border-radius: 15px; text-align: center; color: black; font-weight: bold; border: 2px solid #b8860b; margin-bottom: 20px; box-shadow: 0px 4px 15px rgba(212, 175, 55, 0.4);}}
+    .manual-container {{background-color: {cc}; padding: 30px; border-radius: 15px; border: 1px solid #e0e0e0; line-height: 1.6;}}
 </style>""", unsafe_allow_html=True)
 
 class PDF(FPDF):
@@ -44,14 +46,7 @@ class PDF(FPDF):
 
 def clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
-    mapping = {
-        'articolo': 'Articolo', 'acquistato': 'Acquistato', 'costo': 'Costo',
-        'importo_totale': 'Importo Totale', 'acquista_sn': 'Acquista S/N',
-        'note': 'Note', 'versato': 'Versato', 'prezzo_pieno': 'Prezzo Pieno',
-        'sconto_perc': 'Sconto %', 'stato_pagamento': 'Stato Pagamento',
-        'link_fattura': 'Link Fattura', 'link': 'Link', 'foto': 'Foto',
-        'data_scadenza': 'Data Scadenza', 'stanza_chiusa': 'Stanza Chiusa'
-    }
+    mapping = {'articolo': 'Articolo', 'acquistato': 'Acquistato', 'costo': 'Costo', 'importo_totale': 'Importo Totale', 'acquista_sn': 'Acquista S/N', 'note': 'Note', 'versato': 'Versato', 'prezzo_pieno': 'Prezzo Pieno', 'sconto_perc': 'Sconto %', 'stato_pagamento': 'Stato Pagamento', 'link_fattura': 'Link Fattura', 'link': 'Link', 'foto': 'Foto', 'data_scadenza': 'Data Scadenza', 'stanza_chiusa': 'Stanza Chiusa'}
     df = df.rename(columns=mapping)
     df['Stanza Chiusa'] = df['Stanza Chiusa'].apply(lambda x: str(x).upper().strip() in ['TRUE', '1', 'T'])
     df['DV'] = df['Articolo']
@@ -59,9 +54,7 @@ def clean_df(df):
         if c in df.columns: df[c] = df[c].astype(str).replace(['None', 'nan', '<NA>', 'null', ''], '')
     for c in ['Importo Totale', 'Versato', 'Prezzo Pieno', 'Sconto %', 'Acquistato', 'Costo']:
         if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
-    # Conversione data robusta
-    if 'Data Scadenza' in df.columns:
-        df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
+    if 'Data Scadenza' in df.columns: df['Data Scadenza'] = pd.to_datetime(df['Data Scadenza'], errors='coerce')
     return df
 
 if "password_correct" not in st.session_state:
@@ -75,17 +68,17 @@ else:
         try: st.image("logo.png", use_container_width=True)
         except: pass
         st.session_state.dark_mode = st.toggle("🌙 Notte", st.session_state.dark_mode)
-        sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze])
+        # AGGIUNTA VOCE MANUALE AL MENU
+        sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze] + ["📖 Manuale"])
         edit_struct = st.toggle("⚙️ Modifica Struttura", False)
         st.markdown("<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
         if st.button("Logout 🚪"): st.session_state.clear(); st.rerun()
 
-    if "Riepilogo" in sel:
+    if sel == "🏠 Riepilogo":
         st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
         bud = 15000.0
         res = sb.table("arredamento").select("*").execute()
         df_all = clean_df(pd.DataFrame(res.data))
-
         if not df_all.empty:
             df_r = df_all[df_all['Acquista S/N'].str.upper().str.strip() == 'S'].copy()
             conf, pag = df_r['Importo Totale'].sum(), df_r['Versato'].sum()
@@ -94,12 +87,9 @@ else:
             m2.markdown(f'<div class="metric-card">CONFERMATO<div class="metric-value">{conf:,.0f}€</div></div>', unsafe_allow_html=True)
             m3.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
-
             st.subheader("🗓️ Scadenzario")
-            # Logica corretta: mostriamo se c'è una data E se non è ancora saldato
             sc = df_r[df_r['Data Scadenza'].notna()].copy()
             sc = sc[sc['Versato'] < sc['Importo Totale']]
-
             if not sc.empty:
                 oggi = pd.Timestamp(datetime.now().date())
                 sc['gg'] = (sc['Data Scadenza'] - oggi).dt.days
@@ -107,9 +97,7 @@ else:
                 sc_display = sc.sort_values('gg').copy()
                 sc_display['Data Scadenza'] = sc_display['Data Scadenza'].dt.strftime('%d/%m/%Y')
                 st.dataframe(sc_display[['stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
-            else:
-                st.info("Nessuna scadenza imminente trovata.")
-
+            else: st.info("Nessuna scadenza imminente trovata.")
             c_p, c_t = st.columns([1, 1.2])
             with c_p:
                 st.plotly_chart(px.pie(df_r, values='Importo Totale', names='stanza', hole=0.5), use_container_width=True)
@@ -123,21 +111,35 @@ else:
                     st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
             c_t.dataframe(df_r[['stanza','DV','Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
+    elif sel == "📖 Manuale":
+        st.markdown('<div class="main-header"><h1>Manuale d\'Uso</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
+        try:
+            # URL RAW del file su GitHub (Sostituisci col tuo link diretto se necessario)
+            # Esempio: "https://raw.githubusercontent.com/TUO_UTENTE/TUO_REPO/main/manuale.md"
+            url_manuale = f"https://raw.githubusercontent.com/{st.secrets['github']['user']}/{st.secrets['github']['repo']}/main/manuale.md"
+            response = requests.get(url_manuale)
+            if response.status_code == 200:
+                st.markdown(f'<div class="manual-container">', unsafe_allow_html=True)
+                st.markdown(response.text)
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.warning("⚠️ Non riesco a leggere il file manuale.md su GitHub. Controlla il link o che il file sia pubblico.")
+        except:
+            st.error("❌ Errore di connessione a GitHub per il Manuale.")
+
     elif "📦" in sel or "✨" in sel:
         is_wish = "✨" in sel
         sn = "Wishlist" if is_wish else sel.replace("📦 ", "").capitalize()
         st.title(f"{sel}")
         res = sb.table("arredamento").select("*").eq("stanza", sn).execute()
         df = clean_df(pd.DataFrame(res.data))
-
         if not df.empty:
             is_closed = any(df['Stanza Chiusa'] == True)
             if is_closed and not is_wish: st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn} è completata!</div>', unsafe_allow_html=True)
             t_imp, t_ver = df['Importo Totale'].sum(), df['Versato'].sum()
-            col_t1, col_t2 = st.columns(2)
-            col_t1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
-            col_t2.markdown(f'<div class="metric-card">PAGATO STANZA<div class="metric-value">{t_ver:,.2f}€</div></div>', unsafe_allow_html=True)
-
+            c1, c2 = st.columns(2)
+            c1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
+            c2.markdown(f'<div class="metric-card">PAGATO STANZA<div class="metric-value">{t_ver:,.2f}€</div></div>', unsafe_allow_html=True)
             with st.expander("📝 NOTE"):
                 art = st.selectbox("Seleziona Articolo:", df['DV'].tolist())
                 idx_n = df[df['DV'] == art].index[0]
@@ -145,12 +147,10 @@ else:
                 if nt_key not in st.session_state: st.session_state[nt_key] = str(df.at[idx_n, 'Note'])
                 nt = st.text_area("Nota:", value=st.session_state[nt_key], height=100)
                 if st.button("Conferma Nota"): st.session_state[nt_key] = nt; st.success("Nota pronta!")
-
             with st.form(f"f_{sn}"):
                 check_chiusura = st.checkbox("🔒 Chiudi Stanza (Attiva Sigillo Oro)", value=is_closed) if not is_wish else False
                 cfg = {"Acquista S/N": st.column_config.SelectboxColumn("Acquista S/N", options=["S", "N"]), "Stato Pagamento": st.column_config.SelectboxColumn("Stato Pagamento", options=["", "Acconto", "Saldato", "Preventivo"]), "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"), "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri"), "Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri"), "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi")}
                 df_e = st.data_editor(df.drop(columns=['DV','stanza']), use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
-
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     df_e['Stanza Chiusa'] = check_chiusura
                     for i in range(len(df_e)):
@@ -162,16 +162,8 @@ else:
                         if "Saldato" in str(df_e.iloc[i].get('Stato Pagamento','')):
                             df_e.at[df_e.index[i],'Versato'] = c*q
                             df_e.at[df_e.index[i],'Data Scadenza'] = None
-
                     sb.table("arredamento").delete().eq("stanza", sn).execute()
-                    inv_map = {v: k for k, v in {
-                        'articolo': 'Articolo', 'acquistato': 'Acquistato', 'costo': 'Costo',
-                        'importo_totale': 'Importo Totale', 'acquista_sn': 'Acquista S/N',
-                        'note': 'Note', 'versato': 'Versato', 'prezzo_pieno': 'Prezzo Pieno',
-                        'sconto_perc': 'Sconto %', 'stato_pagamento': 'Stato Pagamento',
-                        'link_fattura': 'Link Fattura', 'link': 'Link', 'foto': 'Foto',
-                        'data_scadenza': 'Data Scadenza', 'stanza_chiusa': 'Stanza Chiusa'
-                    }.items()}
+                    inv_map = {v: k for k, v in {'articolo': 'Articolo', 'acquistato': 'Acquistato', 'costo': 'Costo', 'importo_totale': 'Importo Totale', 'acquista_sn': 'Acquista S/N', 'note': 'Note', 'versato': 'Versato', 'prezzo_pieno': 'Prezzo Pieno', 'sconto_perc': 'Sconto %', 'stato_pagamento': 'Stato Pagamento', 'link_fattura': 'Link Fattura', 'link': 'Link', 'foto': 'Foto', 'data_scadenza': 'Data Scadenza', 'stanza_chiusa': 'Stanza Chiusa'}.items()}
                     df_db = df_e.rename(columns=inv_map)
                     df_db['stanza'] = sn
                     if 'data_scadenza' in df_db.columns:
