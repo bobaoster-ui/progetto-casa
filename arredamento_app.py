@@ -6,6 +6,7 @@ from datetime import datetime
 from fpdf import FPDF
 import time
 import requests
+import io  # <--- AGGIUNGI SOLO QUESTO
 
 # --- SICUREZZA ---
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
@@ -64,14 +65,55 @@ if "password_correct" not in st.session_state:
         if u == st.secrets["auth"]["username"] and p == st.secrets["auth"]["password"]: st.session_state.password_correct = True; st.rerun()
 else:
     stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
+
     with st.sidebar:
         try: st.image("logo.png", use_container_width=True)
         except: pass
+
         st.session_state.dark_mode = st.toggle("🌙 Notte", st.session_state.dark_mode)
-        # AGGIUNTA VOCE MANUALE AL MENU
+
+        # 1. MENU DI NAVIGAZIONE
         sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze] + ["📖 Manuale"])
+
+        # 2. MODIFICA STRUTTURA
         edit_struct = st.toggle("⚙️ Modifica Struttura", False)
+
         st.markdown("<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
+
+        # 3. IL PARACADUTE (BACKUP)
+        if st.button("💾 GENERA BACKUP TOTALE"):
+            try:
+                res_all = sb.table("arredamento").select("*").execute()
+                df_backup = pd.DataFrame(res_all.data)
+                if not df_backup.empty:
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        df_backup.to_excel(writer, index=False, sheet_name='Proprietà_Totale')
+
+                    st.download_button(
+                        label="📥 Scarica Excel",
+# Ho aggiunto %H_%M per avere ore e minuti
+                        data=output.getvalue(),
+                        file_name=f"BACKUP_PROPRIETÀ_{datetime.now().strftime('%d_%m_%Y_%H%M')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                    st.success("Pronto!")
+                else:
+                    st.warning("DB vuoto")
+            except Exception as e:
+                st.error(f"Errore: {e}")
+
+        st.markdown("---")
+
+        # 4. LOGOUT (Sempre in fondo alla sidebar)
+        if st.button("Logout 🚪"):
+            st.session_state.clear()
+            st.rerun()
+
+    # --- LOGICA DELLE PAGINE ---
+    if sel == "🏠 Riepilogo":
+        st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
+
         if st.button("Logout 🚪"): st.session_state.clear(); st.rerun()
 
     if sel == "🏠 Riepilogo":
