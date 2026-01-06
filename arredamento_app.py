@@ -151,37 +151,36 @@ else:
                 check_chiusura = st.checkbox("🔒 Chiudi Stanza (Attiva Sigillo Oro)", value=is_closed) if not is_wish else False
 # --- VERSIONE AGGIORNATA DEL TUO CFG ---
 
-# 1. FORZA LA CONVERSIONE IN DECIMALI (Aggiungi questa parte)
-                for col in ['Prezzo Pieno', 'Sconto %', 'Versato', 'Acquistato', 'Costo', 'Importo Totale']:
-                    if col in df.columns:
-                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0).astype(float)
+# --- 1. FORZATURA DECIMALI (Senza questo non scriverai mai il punto) ---
+        for col in ['Prezzo Pieno', 'Sconto %', 'Versato', 'Acquistato', 'Costo', 'Importo Totale']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0).astype(float)
 
-                # 2. CONFIGURAZIONE COLONNE
-                cfg = {
-                    "Prezzo Pieno": st.column_config.NumberColumn("Prezzo Pieno", format="%.2f", step=0.01),
-                    "Sconto %": st.column_config.NumberColumn("Sconto %", format="%.2f", step=0.01),
-                    "Versato": st.column_config.NumberColumn("Versato", format="%.2f", step=0.01),
-                    "Acquistato": st.column_config.NumberColumn("Quantità", format="%.2f", step=0.1),
-                    "Costo": st.column_config.NumberColumn("Costo Unit.", format="%.2f", step=0.01),
-                    "Importo Totale": st.column_config.NumberColumn("Totale", format="%.2f", step=0.01),
-                    "Acquista S/N": st.column_config.SelectboxColumn("Acquista S/N", options=["S", "N"]),
-                    "Stato Pagamento": st.column_config.SelectboxColumn("Stato Pagamento", options=["", "Acconto", "Saldato", "Preventivo"]),
-                    "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"),
-                    "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri"),
-                    "Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri"),
-                    "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi")
-                }
+        # --- 2. CONFIGURAZIONE COLONNE (Aggiunto step per sbloccare il punto) ---
+        cfg = {
+            "Prezzo Pieno": st.column_config.NumberColumn("Prezzo Pieno", format="%.2f", step=0.01),
+            "Sconto %": st.column_config.NumberColumn("Sconto %", format="%.2f", step=0.01),
+            "Versato": st.column_config.NumberColumn("Versato", format="%.2f", step=0.01),
+            "Acquistato": st.column_config.NumberColumn("Quantità", format="%.2f", step=0.1),
+            "Costo": st.column_config.NumberColumn("Costo Unit.", format="%.2f", step=0.01),
+            "Importo Totale": st.column_config.NumberColumn("Totale", format="%.2f", step=0.01),
+            "Acquista S/N": st.column_config.SelectboxColumn("Acquista S/N", options=["S", "N"]),
+            "Stato Pagamento": st.column_config.SelectboxColumn("Stato Pagamento", options=["", "Acconto", "Saldato", "Preventivo"]),
+            "Data Scadenza": st.column_config.DateColumn("Scadenza", format="DD/MM/YYYY"),
+            "Link Fattura": st.column_config.LinkColumn("📂 Doc", display_text="Apri"),
+            "Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri"),
+            "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi")
+        }
 
-                # 3. EDITOR (Controlla bene l'indentazione qui!)
-                df_e = st.data_editor(
-                    df.drop(columns=['DV','stanza']),
-                    use_container_width=True,
-                    hide_index=True,
-                    num_rows="dynamic" if edit_struct else "fixed",
-                    column_config=cfg
-                )
-
-                df_e = st.data_editor(df.drop(columns=['DV','stanza']), use_container_width=True, hide_index=True, num_rows="dynamic" if edit_struct else "fixed", column_config=cfg)
+        # --- 3. EDITOR (Aggiunta KEY per evitare l'errore DuplicateElementId) ---
+        df_e = st.data_editor(
+            df.drop(columns=['DV','stanza']),
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic" if edit_struct else "fixed",
+            column_config=cfg,
+            key=f"editor_{sn}"  # <--- Questa risolve l'errore DuplicateElementId
+        )
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     df_e['Stanza Chiusa'] = check_chiusura
                     for i in range(len(df_e)):
