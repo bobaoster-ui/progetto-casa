@@ -111,10 +111,6 @@ else:
             st.rerun()
 
     # --- LOGICA DELLE PAGINE ---
-    if sel == "🏠 Riepilogo":
-        st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
-
-        if st.button("Logout 🚪"): st.session_state.clear(); st.rerun()
 
     if sel == "🏠 Riepilogo":
         st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
