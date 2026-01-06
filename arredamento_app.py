@@ -94,17 +94,29 @@ else:
             m3.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
 
-            st.subheader("🗓️ Scadenzario")
-            # LOGICA SCADENZARIO OTTIMIZZATA
+st.subheader("🗓️ Scadenzario")
+            # Convertiamo esplicitamente in data per evitare problemi di formato
+            df_r['Data Scadenza'] = pd.to_datetime(df_r['Data Scadenza'], errors='coerce')
+
+            # Filtriamo: deve esserci una data E deve esserci ancora qualcosa da pagare
             sc = df_r[df_r['Data Scadenza'].notna()].copy()
+
+            # Se vuoi vedere la riga anche se è saldata per testare,
+            # commenta temporaneamente la riga qui sotto aggiungendo un #
             sc = sc[sc['Versato'] < sc['Importo Totale']]
+
             if not sc.empty:
-                sc['gg'] = (sc['Data Scadenza'] - pd.Timestamp(datetime.now().date())).dt.days
+                oggi = pd.Timestamp(datetime.now().date())
+                sc['gg'] = (sc['Data Scadenza'] - oggi).dt.days
                 sc['Stato'] = sc['gg'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
-                sc['Data Scadenza'] = sc['Data Scadenza'].dt.date
-                st.dataframe(sc.sort_values('gg')[['stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
+
+                # Formattazione pulita per la tabella della Proprietà
+                sc_display = sc.sort_values('gg').copy()
+                sc_display['Data Scadenza'] = sc_display['Data Scadenza'].dt.strftime('%d/%m/%Y')
+
+                st.dataframe(sc_display[['stanza','DV','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
             else:
-                st.info("Nessuna scadenza imminente trovata.")
+                st.info("Nessun pagamento residuo con scadenza trovato. (Se l'articolo è già 'Saldato', non apparirà qui)")
 
             c_p, c_t = st.columns([1, 1.2])
             with c_p:
