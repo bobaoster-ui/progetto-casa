@@ -13,13 +13,13 @@ import time
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
 
-st.set_page_config(page_title="Monitoraggio Arredamento V22.9.15", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Monitoraggio Arredamento V22.9.16", layout="wide", page_icon="🚀")
 
 # --- INIZIALIZZAZIONE SESSIONE ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
 if "password_correct" not in st.session_state: st.session_state.password_correct = False
 
-# --- MOTORE PDF ---
+# --- MOTORE PDF (Fix Bytearray Error Immagine 1) ---
 class PDF(FPDF):
     def header(self):
         self.set_fill_color(46, 117, 182); self.rect(0, 0, 210, 40, 'F')
@@ -102,16 +102,25 @@ else:
             c2.metric("TOTALE PAGATO", f"{pag:,.2f} €")
             c3.metric("RESIDUO DA PAGARE", f"{conf-pag:,.2f} €")
 
-            # --- SCADENZARIO RIPRISTINATO ---
-            st.subheader("🗓️ Scadenzario Pagamenti")
-            scad = df_r[df_r['Data Scadenza'].notna() & (df_r['Versato'] < df_r['Importo Totale'])].copy()
-            if not scad.empty:
-                scad['Giorni'] = (scad['Data Scadenza'] - pd.Timestamp(datetime.now().date())).dt.days
-                scad['Stato'] = scad['Giorni'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
-                st.dataframe(scad.sort_values('Giorni')[['Stanza','Articolo','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
-            else:
-                st.info("Nessuna scadenza imminente.")
+            # --- GRAFICI RIPRISTINATI ---
+            col_chart, col_scad = st.columns([1, 1.2])
+            with col_chart:
+                fig = px.pie(df_r, values='Importo Totale', names='Stanza', hole=0.4,
+                             title="Distribuzione Spesa per Stanza",
+                             color_discrete_sequence=px.colors.qualitative.Pastel)
+                st.plotly_chart(fig, use_container_width=True)
 
+            with col_scad:
+                st.subheader("🗓️ Scadenzario Pagamenti")
+                scad = df_r[df_r['Data Scadenza'].notna() & (df_r['Versato'] < df_r['Importo Totale'])].copy()
+                if not scad.empty:
+                    scad['Giorni'] = (scad['Data Scadenza'] - pd.Timestamp(datetime.now().date())).dt.days
+                    scad['Stato'] = scad['Giorni'].apply(lambda x: "🔴 SCADUTO" if x < 0 else ("🟠 IMMINENTE" if x <= 7 else "🟢 OK"))
+                    st.dataframe(scad.sort_values('Giorni')[['Stanza','Articolo','Data Scadenza','Stato']], use_container_width=True, hide_index=True)
+                else:
+                    st.info("Nessun pagamento in scadenza.")
+
+            # --- REPORT PDF (Fix Bytearray) ---
             if st.button("📄 Genera Report PDF"):
                 pdf = PDF(); pdf.add_page(); w = [30, 90, 35, 35]
                 pdf.set_fill_color(46,117,182); pdf.set_text_color(255,255,255); pdf.set_font('Arial','B',10)
@@ -121,12 +130,17 @@ else:
                 for _, r in df_r.iterrows():
                     pdf.draw_table_row([r['Stanza'], r['Articolo'], f"{r['Importo Totale']:.2f}", f"{r['Versato']:.2f}"], w)
 
-                buf = io.BytesIO()
-                pdf_out = pdf.output(dest='S')
-                buf.write(pdf_out.encode('latin-1') if isinstance(pdf_out, str) else pdf_out)
-                st.download_button("📥 Scarica Report PDF", buf.getvalue(), "Report_Proprietà_Jacopo.pdf", "application/pdf")
+                # Fix: Conversione esplicita in bytes per Streamlit
+                pdf_output = pdf.output(dest='S')
+                if isinstance(pdf_output, str):
+                    pdf_bytes = pdf_output.encode('latin-1')
+                else:
+                    pdf_bytes = bytes(pdf_output)
+
+                st.download_button("📥 Scarica Report PDF", pdf_bytes, "Report_Proprietà_Jacopo.pdf", "application/pdf")
 
     else:
+        # Gestione Stanze e Wishlist
         is_wish = "Wishlist" in sel
         sn = "desideri" if is_wish else sel.replace("📦 ", "").lower()
         st.title(f"{'✨' if is_wish else '🏠'} {sel.replace('📦 ', '')}")
@@ -144,7 +158,6 @@ else:
                     "Importo Totale": st.column_config.NumberColumn("Totale (€)", disabled=True)
                 }
 
-                # Attivazione dinamica righe se edit_struct è True
                 df_e = st.data_editor(df, use_container_width=True, hide_index=True, column_config=cfg, num_rows="dynamic" if edit_struct else "fixed")
 
                 if st.form_submit_button("💾 SALVA MODIFICHE"):
@@ -166,4 +179,4 @@ else:
                     except Exception as e:
                         if "429" in str(e): st.success("✅ Dati salvati!"); st.rerun()
                         else: st.error(f"Errore: {e}")
-        except: st.error("Connessione Google Sheets instabile. Riprova.")
+        except: st.error("Connessione instabile. Riprova.")
