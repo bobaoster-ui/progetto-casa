@@ -80,28 +80,33 @@ else:
 
         st.markdown("<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
 
-        # 3. IL PARACADUTE (BACKUP)
+# 3. IL PARACADUTE (BACKUP)
         if st.button("💾 GENERA BACKUP TOTALE"):
             try:
                 res_all = sb.table("arredamento").select("*").execute()
                 df_backup = pd.DataFrame(res_all.data)
+
                 if not df_backup.empty:
+                    # --- QUESTA È LA RIGA PER L'ORDINAMENTO ---
+                    df_backup = df_backup.sort_values(by=['stanza', 'articolo'])
+
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                         df_backup.to_excel(writer, index=False, sheet_name='Proprietà_Totale')
 
+                    # --- IL TASTO È ALLINEATO ALLA PAROLA 'with' ---
                     st.download_button(
                         label="📥 Scarica Excel",
-# Ho aggiunto %H_%M per avere ore e minuti
                         data=output.getvalue(),
                         file_name=f"BACKUP_PROPRIETÀ_{datetime.now().strftime('%d_%m_%Y_%H%M')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
-                    st.success("Pronto!")
+                    st.success("Backup ordinato e pronto!")
                 else:
                     st.warning("DB vuoto")
             except Exception as e:
                 st.error(f"Errore: {e}")
+
 
         st.markdown("---")
 
