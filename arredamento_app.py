@@ -307,17 +307,20 @@ else:
 
 # Aggiungiamo alla tua configurazione delle colonne il comando per nascondere l'id
 # Se 'cfg' è il tuo dizionario column_config, aggiungi questa riga:
-                cfg["id"] = st.column_config.Column(visible=False)
-
+# Sostituisci la riga 310 con questa:
+                cfg["id"] = st.column_config.Column(label="id", required=False, width=None, help=None)
+# AGGIUNGI QUESTA RIGA PER RENDERLA INVISIBILE
+                cfg["id"] = None
+# E nell'editor, usa il parametro 'disabled' per proteggerlo:
                 df_e = st.data_editor(
                 df_per_editor,
                 use_container_width=True,
                 hide_index=True,
                 num_rows="dynamic" if edit_struct else "fixed",
                 column_config=cfg,
+                disabled=["id"], # <--- Aggiungi questo: impedisce di toccare l'id
                 key=f"editor_{sn}"
                 )
-
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     try:
                         # Prepariamo i dati aggiornando le logiche di calcolo
