@@ -301,31 +301,77 @@ else:
                     "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi")
                 }
 
-        # --- 3. EDITOR (Aggiunta KEY per evitare l'errore DuplicateElementId) ---
+# --- 3. EDITOR ---
+# Non droppiamo l'id qui, lo teniamo nel DataFrame!
+                df_per_editor = df.drop(columns=['DV', 'stanza'])
+
+# Aggiungiamo alla tua configurazione delle colonne il comando per nascondere l'id
+# Se 'cfg' è il tuo dizionario column_config, aggiungi questa riga:
+                cfg["id"] = st.column_config.Column(visible=False)
+
                 df_e = st.data_editor(
-                    df.drop(columns=['DV','stanza', 'id']), # <--- AGGIUNGI 'id' QUI per nasconderlo]),
-                    use_container_width=True,
-                    hide_index=True,
-                    num_rows="dynamic" if edit_struct else "fixed",
-                    column_config=cfg,
-                    key=f"editor_{sn}"  # <--- Questa risolve l'errore DuplicateElementId
+                df_per_editor,
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic" if edit_struct else "fixed",
+                column_config=cfg,
+                key=f"editor_{sn}"
                 )
+
                 if st.form_submit_button("💾 SALVA TUTTO"):
-                    df_e['Stanza Chiusa'] = check_chiusura
-                    for i in range(len(df_e)):
-                        k = f"note_val_{sn}_{i}"
-                        if k in st.session_state: df_e.at[df_e.index[i], 'Note'] = st.session_state[k]
-                        p, s, q = float(df_e.iloc[i].get('Prezzo Pieno',0)), float(df_e.iloc[i].get('Sconto %',0)), float(df_e.iloc[i].get('Acquistato',1))
-                        c = p * (1-(s/100)) if p>0 else float(df_e.iloc[i].get('Costo',0))
-                        df_e.at[df_e.index[i],'Costo'] = c; df_e.at[df_e.index[i],'Importo Totale'] = c*q
-                        if "Saldato" in str(df_e.iloc[i].get('Stato Pagamento','')):
-                            df_e.at[df_e.index[i],'Versato'] = c*q
-                            df_e.at[df_e.index[i],'Data Scadenza'] = None
-                    sb.table("arredamento").delete().eq("stanza", sn).execute()
-                    inv_map = {v: k for k, v in {'articolo': 'Articolo', 'acquistato': 'Acquistato', 'costo': 'Costo', 'importo_totale': 'Importo Totale', 'acquista_sn': 'Acquista S/N', 'note': 'Note', 'versato': 'Versato', 'prezzo_pieno': 'Prezzo Pieno', 'sconto_perc': 'Sconto %', 'stato_pagamento': 'Stato Pagamento', 'link_fattura': 'Link Fattura', 'link': 'Link', 'foto': 'Foto', 'data_scadenza': 'Data Scadenza', 'stanza_chiusa': 'Stanza Chiusa'}.items()}
-                    df_db = df_e.rename(columns=inv_map)
-                    df_db['stanza'] = sn
-                    if 'data_scadenza' in df_db.columns:
-                        df_db['data_scadenza'] = df_db['data_scadenza'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else None)
-                    sb.table("arredamento").insert(df_db.to_dict(orient='records')).execute()
-                    st.balloons(); st.success("Salvato su Database!"); time.sleep(1); st.rerun()
+                    try:
+                        # Prepariamo i dati aggiornando le logiche di calcolo
+                        df_e['Stanza Chiusa'] = check_chiusura
+                        for i in range(len(df_e)):
+                            k = f"note_val_{sn}_{i}"
+                            if k in st.session_state:
+                                df_e.at[df_e.index[i], 'Note'] = st.session_state[k]
+
+                            p = float(df_e.iloc[i].get('Prezzo Pieno', 0))
+                            s = float(df_e.iloc[i].get('Sconto %', 0))
+                            q = float(df_e.iloc[i].get('Acquistato', 1))
+
+                            c = p * (1-(s/100)) if p > 0 else float(df_e.iloc[i].get('Costo', 0))
+                            df_e.at[df_e.index[i], 'Costo'] = c
+                            df_e.at[df_e.index[i], 'Importo Totale'] = c * q
+
+                            if "Saldato" in str(df_e.iloc[i].get('Stato Pagamento', '')):
+                                df_e.at[df_e.index[i], 'Versato'] = c * q
+                                df_e.at[df_e.index[i], 'Data Scadenza'] = None
+
+                        # --- LOGICA UPSERT (PLATINUM) ---
+                        # Inseriamo 'id' nella mappatura per non perderlo!
+                        mappa_colonne = {
+                            'id': 'id', # <--- Fondamentale per l'aggiornamento
+                            'articolo': 'Articolo', 'acquistato': 'Acquistato', 'costo': 'Costo',
+                            'importo_totale': 'Importo Totale', 'acquista_sn': 'Acquista S/N',
+                            'note': 'Note', 'versato': 'Versato', 'prezzo_pieno': 'Prezzo Pieno',
+                            'sconto_perc': 'Sconto %', 'stato_pagamento': 'Stato Pagamento',
+                            'link_fattura': 'Link Fattura', 'link': 'Link', 'foto': 'Foto',
+                            'data_scadenza': 'Data Scadenza', 'stanza_chiusa': 'Stanza Chiusa'
+                        }
+                        inv_map = {v: k for k, v in mappa_colonne.items()}
+
+                        df_db = df_e.rename(columns=inv_map)
+                        df_db['stanza'] = sn
+
+                        # Formattazione date
+                        if 'data_scadenza' in df_db.columns:
+                            df_db['data_scadenza'] = df_db['data_scadenza'].apply(
+                                lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) and hasattr(x, 'strftime') else x
+                            )
+
+                        # TRASFORMAZIONE IN DIZIONARIO
+                        dati_finali = df_db.to_dict(orient='records')
+
+                        # Eseguiamo l'UPSERT basandoci sulla colonna 'id'
+                        # Non facciamo più il .delete()!
+                        sb.table("arredamento").upsert(dati_finali, on_conflict="id").execute()
+
+                        st.balloons()
+                        st.success(f"Proprietà Jacopo aggiornata con successo! ✅")
+                        time.sleep(1)
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"Errore durante il salvataggio Platinum: {e}")
