@@ -226,6 +226,21 @@ else:
                 )
 
                 id_parent = scelta[0]
+
+# --- LISTA DOCUMENTI ESISTENTI ---
+                st.write("---")
+                st.subheader("📄 Documenti già presenti:")
+                docs = sb.table("documenti_arredo").select("*").eq("parent_id", id_parent).execute()
+
+                if docs.data:
+                    for d in docs.data:
+                        col_a, col_b = st.columns([3, 1])
+                        col_a.write(f"🔹 {d['nome_documento']}")
+                        col_b.link_button("👁️ Apri", d['link_file'])
+                else:
+                    st.info("Nessun documento caricato per questo articolo.")
+                st.write("---")
+
                 nome_doc = st.text_input("Descrizione documento (es: Fattura Forno)", key=f"desc_doc_{sn}")
                 file_caricato = st.file_uploader("Carica PDF o Immagine", type=['pdf', 'png', 'jpg', 'jpeg'], key=f"up_doc_{sn}")
 
