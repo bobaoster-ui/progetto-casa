@@ -343,9 +343,8 @@ else:
                                 df_e.at[df_e.index[i], 'Data Scadenza'] = None
 
                         # --- LOGICA UPSERT (PLATINUM) ---
-                        # Inseriamo 'id' nella mappatura per non perderlo!
                         mappa_colonne = {
-                            'id': 'id', # <--- Fondamentale per l'aggiornamento
+                            'id': 'id',
                             'articolo': 'Articolo', 'acquistato': 'Acquistato', 'costo': 'Costo',
                             'importo_totale': 'Importo Totale', 'acquista_sn': 'Acquista S/N',
                             'note': 'Note', 'versato': 'Versato', 'prezzo_pieno': 'Prezzo Pieno',
@@ -358,21 +357,21 @@ else:
                         df_db = df_e.rename(columns=inv_map)
                         df_db['stanza'] = sn
 
-                        # Formattazione date
+                        # Formattazione date (PULITA PER SUPABASE)
                         if 'data_scadenza' in df_db.columns:
                             df_db['data_scadenza'] = df_db['data_scadenza'].apply(
-                                lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) and hasattr(x, 'strftime') else x
+                                lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) and hasattr(x, 'strftime') else None
                             )
 
-                        # TRASFORMAZIONE IN DIZIONARIO
-                        dati_finali = df_db.to_dict(orient='records')
+                        # --- TRASFORMAZIONE CON PULIZIA NaT/NaN ---
+                        # Questa riga risolve l'errore "NaTType is not JSON serializable"
+                        dati_finali = df_db.where(pd.notnull(df_db), None).to_dict(orient='records')
 
-                        # Eseguiamo l'UPSERT basandoci sulla colonna 'id'
-                        # Non facciamo più il .delete()!
+                        # Eseguiamo l'UPSERT
                         sb.table("arredamento").upsert(dati_finali, on_conflict="id").execute()
 
                         st.balloons()
-                        st.success(f"Proprietà Jacopo aggiornata con successo! ✅")
+                        st.success(f"**Proprietà** Jacopo aggiornata con successo! ✅")
                         time.sleep(1)
                         st.rerun()
 
