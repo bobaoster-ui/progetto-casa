@@ -196,13 +196,71 @@ else:
             c1, c2 = st.columns(2)
             c1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
             c2.markdown(f'<div class="metric-card">PAGATO STANZA<div class="metric-value">{t_ver:,.2f}€</div></div>', unsafe_allow_html=True)
+
+# --- 1. SEZIONE NOTE ---
             with st.expander("📝 NOTE"):
-                art = st.selectbox("Seleziona Articolo:", df['DV'].tolist())
-                idx_n = df[df['DV'] == art].index[0]
+                # Selettore specifico per le note
+                art_per_nota = st.selectbox("Seleziona Articolo per la nota:", df['DV'].tolist(), key=f"sel_nota_{sn}")
+                idx_n = df[df['DV'] == art_per_nota].index[0]
+
                 nt_key = f"note_val_{sn}_{idx_n}"
-                if nt_key not in st.session_state: st.session_state[nt_key] = str(df.at[idx_n, 'Note'])
-                nt = st.text_area("Nota:", value=st.session_state[nt_key], height=100)
-                if st.button("Conferma Nota"): st.session_state[nt_key] = nt; st.success("Nota pronta!")
+                if nt_key not in st.session_state:
+                    st.session_state[nt_key] = str(df.at[idx_n, 'Note'])
+
+                nt = st.text_area("Nota:", value=st.session_state[nt_key], height=100, key=f"area_note_{sn}")
+                if st.button("Conferma Nota", key=f"btn_note_{sn}"):
+                    st.session_state[nt_key] = nt
+                    st.success("Nota pronta!")
+
+            # --- 2. GESTIONE DOCUMENTI (PLATINUM EDITION) ---
+            st.markdown("---")
+            with st.expander("📂 GESTIONE DOCUMENTI (Fatture, Scontrini, Garanzie)"):
+                # Creiamo la lista usando l'ID che abbiamo recuperato prima
+                opzioni_art = df[['id', 'Articolo']].values.tolist()
+
+                scelta = st.selectbox(
+                    "Seleziona l'articolo a cui riferire il documento:",
+                    opzioni_art,
+                    format_func=lambda x: x[1],
+                    key=f"sel_parent_doc_{sn}"
+                )
+
+                id_parent = scelta[0]
+                nome_doc = st.text_input("Descrizione documento (es: Fattura Forno)", key=f"desc_doc_{sn}")
+                file_caricato = st.file_uploader("Carica PDF o Immagine", type=['pdf', 'png', 'jpg', 'jpeg'], key=f"up_doc_{sn}")
+
+                if st.button("🚀 Salva Documento", key=f"btn_save_doc_{sn}"):
+                    if file_caricato and nome_doc:
+                        try:
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            file_path = f"{id_parent}/{timestamp}_{file_caricato.name}"
+
+                            # Upload nello Storage
+                            sb.storage.from_("documenti_proprieta").upload(
+                                file_path,
+                                file_caricato.getvalue(),
+                                {"content-type": file_caricato.type}
+                            )
+
+                            # URL Pubblico
+                            url_doc = sb.storage.from_("documenti_proprieta").get_public_url(file_path)
+
+                            # Record nel Database
+                            sb.table("documenti_arredo").insert({
+                                "parent_id": id_parent,
+                                "nome_documento": nome_doc,
+                                "link_file": url_doc
+                            }).execute()
+
+                            st.success(f"Documento '{nome_doc}' salvato!")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Errore: {e}")
+                    else:
+                        st.warning("Compila descrizione e seleziona un file!")
+
+            # --- 3. INIZIO FORM TABELLA ---
             with st.form(f"f_{sn}"):
                 check_chiusura = st.checkbox("🔒 Chiudi Stanza (Attiva Sigillo Oro)", value=is_closed) if not is_wish else False
 # --- VERSIONE AGGIORNATA DEL TUO CFG ---
