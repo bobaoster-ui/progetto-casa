@@ -227,22 +227,41 @@ else:
 
                 id_parent = scelta[0]
 
-# --- LISTA DOCUMENTI ESISTENTI ---
                 st.write("---")
                 st.subheader("📄 Documenti già presenti:")
                 docs = sb.table("documenti_arredo").select("*").eq("parent_id", id_parent).execute()
 
                 if docs.data:
                     for d in docs.data:
-                        col_a, col_b = st.columns([3, 1])
+                        # Tutto questo blocco deve essere indentato dentro il FOR
+                        col_a, col_b, col_c = st.columns([3, 1, 1])
+
                         col_a.write(f"🔹 {d['nome_documento']}")
                         col_b.link_button("👁️ Apri", d['link_file'])
+
+                        # Il tasto elimina deve essere indentato bene per ogni riga
+                        if col_c.button("🗑️", key=f"del_{d['id']}", help="Elimina questo documento"):
+                            try:
+                                # 1. Eliminiamo dal DB
+                                sb.table("documenti_arredo").delete().eq("id", d['id']).execute()
+
+                                # 2. Eliminiamo dallo Storage
+                                path_to_remove = d['link_file'].split('/')[-1]
+                                full_path = f"{id_parent}/{path_to_remove}"
+                                sb.storage.from_("documenti_proprieta").remove([full_path])
+
+                                st.toast(f"Documento '{d['nome_documento']}' rimosso!")
+                                time.sleep(1)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Errore durante l'eliminazione: {e}")
                 else:
                     st.info("Nessun documento caricato per questo articolo.")
-                st.write("---")
 
+                st.write("---")
                 nome_doc = st.text_input("Descrizione documento (es: Fattura Forno)", key=f"desc_doc_{sn}")
                 file_caricato = st.file_uploader("Carica PDF o Immagine", type=['pdf', 'png', 'jpg', 'jpeg'], key=f"up_doc_{sn}")
+
 
                 if st.button("🚀 Salva Documento", key=f"btn_save_doc_{sn}"):
                     if file_caricato and nome_doc:
