@@ -47,7 +47,8 @@ class PDF(FPDF):
 
 def clean_df(df):
     if df is None or df.empty: return pd.DataFrame()
-    mapping = {'articolo': 'Articolo', 'acquistato': 'Acquistato', 'costo': 'Costo', 'importo_totale': 'Importo Totale', 'acquista_sn': 'Acquista S/N', 'note': 'Note', 'versato': 'Versato', 'prezzo_pieno': 'Prezzo Pieno', 'sconto_perc': 'Sconto %', 'stato_pagamento': 'Stato Pagamento', 'link_fattura': 'Link Fattura', 'link': 'Link', 'foto': 'Foto', 'data_scadenza': 'Data Scadenza', 'stanza_chiusa': 'Stanza Chiusa'}
+    # Aggiunto 'id': 'id' nel mapping per non perderlo
+    mapping = {'id': 'id', 'articolo': 'Articolo', 'acquistato': 'Acquistato', 'costo': 'Costo', 'importo_totale': 'Importo Totale', 'acquista_sn': 'Acquista S/N', 'note': 'Note', 'versato': 'Versato', 'prezzo_pieno': 'Prezzo Pieno', 'sconto_perc': 'Sconto %', 'stato_pagamento': 'Stato Pagamento', 'link_fattura': 'Link Fattura', 'link': 'Link', 'foto': 'Foto', 'data_scadenza': 'Data Scadenza', 'stanza_chiusa': 'Stanza Chiusa'}
     df = df.rename(columns=mapping)
     df['Stanza Chiusa'] = df['Stanza Chiusa'].apply(lambda x: str(x).upper().strip() in ['TRUE', '1', 'T'])
     df['DV'] = df['Articolo']
@@ -229,7 +230,7 @@ else:
 
         # --- 3. EDITOR (Aggiunta KEY per evitare l'errore DuplicateElementId) ---
                 df_e = st.data_editor(
-                    df.drop(columns=['DV','stanza']),
+                    df.drop(columns=['DV','stanza', 'id']), # <--- AGGIUNGI 'id' QUI per nasconderlo]),
                     use_container_width=True,
                     hide_index=True,
                     num_rows="dynamic" if edit_struct else "fixed",
