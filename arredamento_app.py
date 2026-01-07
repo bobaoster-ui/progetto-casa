@@ -303,24 +303,24 @@ else:
 
 # --- 3. EDITOR ---
 # Non droppiamo l'id qui, lo teniamo nel DataFrame!
+
+# --- 3. EDITOR ---
                 df_per_editor = df.drop(columns=['DV', 'stanza'])
 
-# Aggiungiamo alla tua configurazione delle colonne il comando per nascondere l'id
-# Se 'cfg' è il tuo dizionario column_config, aggiungi questa riga:
-# Sostituisci la riga 310 con questa:
-                cfg["id"] = st.column_config.Column(label="id", required=False, width=None, help=None)
-# AGGIUNGI QUESTA RIGA PER RENDERLA INVISIBILE
-                cfg["id"] = None
-# E nell'editor, usa il parametro 'disabled' per proteggerlo:
+# Nascondiamo l'id dall'ordine delle colonne (Socio, questa è la chiave!)
+                colonne_visibili = [c for c in df_per_editor.columns if c != 'id']
+
                 df_e = st.data_editor(
-                df_per_editor,
-                use_container_width=True,
-                hide_index=True,
-                num_rows="dynamic" if edit_struct else "fixed",
-                column_config=cfg,
-                disabled=["id"], # <--- Aggiungi questo: impedisce di toccare l'id
-                key=f"editor_{sn}"
+                    df_per_editor,
+                    use_container_width=True,
+                    hide_index=True,
+                    num_rows="dynamic" if edit_struct else "fixed",
+                    column_config=cfg,
+                    column_order=colonne_visibili, # L'id c'è nel DF ma non viene disegnato
+                    key=f"editor_{sn}"
                 )
+
+
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     try:
                         # Prepariamo i dati aggiornando le logiche di calcolo
