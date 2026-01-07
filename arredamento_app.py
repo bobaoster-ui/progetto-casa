@@ -103,7 +103,7 @@ else:
                 st.sidebar.download_button(
                     label="💾 Scarica Excel Proprietà",
                     data=output.getvalue(),
-                    file_name=f"Backup_Proprieta_Jacopo_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
+                    file_name=f"Backup_Proprieta_Jacopo_{datetime.now().strftime('%d_%m_%Y_%H_%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 st.sidebar.success("Excel generato! Clicca sopra per scaricare.")
