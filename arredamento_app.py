@@ -82,39 +82,41 @@ else:
         st.markdown("<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
 
 # 3. IL PARACADUTE (BACKUP)
-        if st.button("💾 GENERA BACKUP TOTALE"):
+
+# --- LOGICA GENERAZIONE BACKUP ---
+        if st.sidebar.button("📊 GENERA BACKUP TOTALE"):
             try:
-                res_all = sb.table("arredamento").select("*").execute()
-                df_backup = pd.DataFrame(res_all.data)
+                # 1. Recupero dati da Supabase
+                res_arredo = sb.table("arredamento").select("*").execute()
+                res_docs = sb.table("documenti_arredo").select("*").execute()
 
-                if not df_backup.empty:
-                    # --- QUESTA È LA RIGA PER L'ORDINAMENTO ---
-                    df_backup = df_backup.sort_values(by=['stanza', 'articolo'])
+                df_arredo = pd.DataFrame(res_arredo.data)
+                df_docs = pd.DataFrame(res_docs.data)
 
-                    output = io.BytesIO()
-                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                        df_backup.to_excel(writer, index=False, sheet_name='Proprietà_Totale')
+                # 2. Creazione file Excel in memoria
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    df_arredo.to_excel(writer, sheet_name='Inventario Arredo', index=False)
+                    df_docs.to_excel(writer, sheet_name='Lista Documenti', index=False)
 
-                    # --- IL TASTO È ALLINEATO ALLA PAROLA 'with' ---
-                    st.download_button(
-                        label="📥 Scarica Excel",
-                        data=output.getvalue(),
-                        file_name=f"BACKUP_PROPRIETÀ_{datetime.now().strftime('%d_%m_%Y_%H%M')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-                    st.success("Backup ordinato e pronto!")
-                else:
-                    st.warning("DB vuoto")
+                # 3. Tasto per il download effettivo
+                st.sidebar.download_button(
+                    label="💾 Scarica Excel Proprietà",
+                    data=output.getvalue(),
+                    file_name=f"Backup_Proprieta_Jacopo_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                st.sidebar.success("Excel generato! Clicca sopra per scaricare.")
+
             except Exception as e:
-                st.error(f"Errore: {e}")
+                st.sidebar.error(f"Errore backup: {e}")
 
 
-        st.markdown("---")
+    st.markdown("---")
 
-        # 4. LOGOUT (Sempre in fondo alla sidebar)
-        if st.button("Logout 🚪"):
-            st.session_state.clear()
-            st.rerun()
+    if st.sidebar.button("Logout 🚪"): # Ho aggiunto .sidebar qui così il tasto resta a sinistra!
+        st.session_state.clear()
+        st.rerun()
 
     # --- LOGICA DELLE PAGINE ---
 
