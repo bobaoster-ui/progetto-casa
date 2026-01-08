@@ -135,10 +135,12 @@ else:
             st.metric("Totale Arredi", f"{len(df_tutto)} pz")
 
         with c2:
-            # Cerchiamo la colonna costo senza impazzire tra maiuscole e minuscole
+            # Troviamo la colonna costo (Costo o costo)
             col_costo = next((c for c in df_tutto.columns if c.lower() == 'costo'), None)
             
             if col_costo:
+                # .fillna(0) è la magia: trasforma i valori vuoti (NaN) in 0
+                # Così l'errore "JSON compliant: nan" sparisce!
                 prezzi = pd.to_numeric(df_tutto[col_costo], errors='coerce').fillna(0)
                 st.metric("Valore Totale", f"€ {prezzi.sum():,.2f}")
             else:
