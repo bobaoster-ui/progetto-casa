@@ -262,16 +262,15 @@ else:
 
                 st.write("---")
                 # 1. Inizializziamo la variabile che conterrà il testo "pulito"
-                if f"valore_pulito_{sn}" not in st.session_state:
-                    st.session_state[f"valore_pulito_{sn}"] = ""
+                if f"reset_desc_{sn}" not in st.session_state:
+                    st.session_state[f"reset_desc_{sn}"] = ""
 
-                # 2. Colleghiamo il campo al valore dello stato usando 'value'
+                # 2. Il widget: il 'value' legge dal ponte, ma la 'key' ha un nome diverso!
                 nome_doc = st.text_input(
                     "Descrizione documento (es: Fattura Forno)",
-                    value=st.session_state[f"valore_pulito_{sn}"], # <--- Fondamentale!
-                    key=f"desc_doc_{sn}"
+                    value=st.session_state[f"reset_desc_{sn}"],
+                    key=f"input_reale_{sn}" # <--- Questa key NON deve essere toccata nel codice
                 )
-
 
                 file_caricato = st.file_uploader("Carica PDF o Immagine", type=['pdf', 'png', 'jpg', 'jpeg'], key=f"up_doc_{sn}")
 
@@ -299,8 +298,10 @@ else:
                             }).execute()
 
                             # 2. Resetti la "memoria interna" di Streamlit (Sulla riga sotto!)
-                            if f"desc_doc_{sn}" in st.session_state:
-                                st.session_state[f"desc_doc_{sn}"] = ""
+                            # --- IL TRUCCO PER SBIANCARE ---
+                            # Modifichiamo SOLO il valore del ponte
+                            st.session_state[f"reset_desc_{sn}"] = ""
+
                             st.success(f"Documento '{nome_doc}' salvato!")
                             time.sleep(1)
                             st.rerun()
