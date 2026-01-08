@@ -453,6 +453,9 @@ else:
 
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     try:
+                        # PuliAMO i dati: trasforma tutti i vuoti in 0 così i calcoli non falliscono
+                        df_e = df_e.fillna(0) 
+                        df_e['Acquista S/N'] = df_e['Acquista S/N'].replace(0, 'N')                        
                         # Prepariamo i dati aggiornando le logiche di calcolo
                         df_e['Stanza Chiusa'] = check_chiusura
                         for i in range(len(df_e)):
