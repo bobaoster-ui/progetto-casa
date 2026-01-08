@@ -262,11 +262,11 @@ else:
 
                 st.write("---")
 
-                # 1. Inizializziamo il nostro "ponte" per il reset
+                # 1. IL PONTE (Questo lo puoi modificare quanto vuoi!)
                 if f"reset_desc_{sn}" not in st.session_state:
                     st.session_state[f"reset_desc_{sn}"] = ""
 
-                # 2. Il widget legge il valore dal ponte
+                # 2. IL WIDGET (Legge dal ponte, ha la sua key ma non la tocchiamo più nel codice)
                 nome_doc = st.text_input(
                     "Descrizione documento (es: Fattura Forno)",
                     value=st.session_state[f"reset_desc_{sn}"],
@@ -303,12 +303,17 @@ else:
                             # --- IL "NOME_VARIABILE = ''" CHE CERCAVI ---
                             # Svuotiamo il ponte e forziamo il reset della key interna
                             st.session_state[f"reset_desc_{sn}"] = ""
-                            if f"input_reale_{sn}" in st.session_state:
-                                st.session_state[f"input_reale_{sn}"] = ""
+
+                            # --- IL TRUCCO FINALE (VB STYLE) ---
+                            # Modifichiamo SOLO il ponte.
+                            # NON scrivere st.session_state[f"input_reale_{sn}"] = "" <-- QUESTA CANCELLALA!
+
+                            st.session_state[f"reset_desc_{sn}"] = ""
 
                             st.success(f"Documento '{nome_doc}' salvato!")
                             time.sleep(1)
-                            st.rerun()
+                            st.rerun() # Al riavvio, il widget vedrà il ponte vuoto e si pulirà!
+
 
                         except Exception as e:
                             st.error(f"Errore: {e}")
