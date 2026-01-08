@@ -298,10 +298,9 @@ else:
                                 "link_file": url_doc
                             }).execute()
 
-                            # --- IL TRUCCO PER SBIANCARE ---
-                            # Prima del rerun, svuotiamo la variabile dello stato
-                            st.session_state[f"valore_pulito_{sn}"] = ""
-
+                            # 2. Resetti la "memoria interna" di Streamlit (Sulla riga sotto!)
+                            if f"desc_doc_{sn}" in st.session_state:
+                                st.session_state[f"desc_doc_{sn}"] = ""
                             st.success(f"Documento '{nome_doc}' salvato!")
                             time.sleep(1)
                             st.rerun()
