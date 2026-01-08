@@ -488,14 +488,15 @@ else:
                         inv_map = {v: k for k, v in mappa_colonne.items()}
 
                         # Sistemiamo le date: se sono diventate '0', rimettiamole vuote (None)
-                        # Forza la colonna a essere di tipo data e trasforma errori in NaT
+                        # 1. Forza la colonna a essere di tipo data e trasforma errori (come lo 0) in NaT
                         df_e['Data Scadenza'] = pd.to_datetime(df_e['Data Scadenza'], errors='coerce')
 
-                        # TRUCCO FINALE: Trasforma in stringa formattata YYYY-MM-DD oppure None
-                        # Questo bypassa ogni problema di formato di Pandas/Supabase
+                        # 2. Formattazione finale: se è una data valida, scrivi la stringa, altrimenti None
+                        # Usiamo pd.isna() che è più robusto per beccare sia i NaT che i NaN
                         df_e['Data Scadenza'] = df_e['Data Scadenza'].apply(
                             lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) and hasattr(x, 'strftime') else None
                         )
+
                         # Ora rinominiamo per il database
                         df_db = df_e.rename(columns=inv_map)
                         df_db['stanza'] = sn
