@@ -153,6 +153,29 @@ else:
 
         st.divider()
 
+        # --- RICERCA RAPIDA DOCUMENTI ---
+        with st.expander("🔍 Cerca un documento in tutta la Proprietà"):
+            cerca_doc = st.text_input("Inserisci il nome del file (es: fattura, progetto...):", key="search_global")
+            
+            if cerca_doc:
+                # Cerchiamo nel DB in modo "fuzzy" (ilike trova anche parti del nome)
+                risultati = sb.table("documenti_arredo").select("*").ilike("nome_documento", f"%{cerca_doc}%").execute()
+                
+                if risultati.data:
+                    st.write(f"Trovati {len(risultati.data)} documenti:")
+                    for r in risultati.data:
+                        col_info, col_btn = st.columns([4, 1])
+                        with col_info:
+                            st.markdown(f"📄 **{r['nome_documento']}**")
+                        with col_btn:
+                            st.link_button("👁️ Apri", r['link_file'], use_container_width=True)
+                else:
+                    st.info("Nessun documento trovato con questo nome.")
+
+        
+        st.divider()        #un po' di spazio in fondo (evviva)
+
+
 
         res = sb.table("arredamento").select("*").execute()
         df_all = clean_df(pd.DataFrame(res.data))
@@ -225,27 +248,6 @@ else:
         st.title(f"{sel}")
 
 
-        # --- RICERCA RAPIDA DOCUMENTI ---
-        with st.expander("🔍 Cerca un documento in tutta la Proprietà"):
-            cerca_doc = st.text_input("Inserisci il nome del file (es: fattura, progetto...):", key="search_global")
-            
-            if cerca_doc:
-                # Cerchiamo nel DB in modo "fuzzy" (ilike trova anche parti del nome)
-                risultati = sb.table("documenti_arredo").select("*").ilike("nome_documento", f"%{cerca_doc}%").execute()
-                
-                if risultati.data:
-                    st.write(f"Trovati {len(risultati.data)} documenti:")
-                    for r in risultati.data:
-                        col_info, col_btn = st.columns([4, 1])
-                        with col_info:
-                            st.markdown(f"📄 **{r['nome_documento']}**")
-                        with col_btn:
-                            st.link_button("👁️ Apri", r['link_file'], use_container_width=True)
-                else:
-                    st.info("Nessun documento trovato con questo nome.")
-
-        
-        st.divider()        #un po' di spazio in fondo (evviva)
 
         res = sb.table("arredamento").select("*").eq("stanza", sn).execute()
         df = clean_df(pd.DataFrame(res.data))
