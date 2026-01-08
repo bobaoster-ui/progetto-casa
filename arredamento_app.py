@@ -231,32 +231,51 @@ else:
 
                 st.write("---")
                 st.subheader("📄 Documenti già presenti:")
+                # 1. QUESTA RIGA TIENILA (scarica i dati)
                 docs = sb.table("documenti_arredo").select("*").eq("parent_id", id_parent).execute()
 
                 if docs.data:
+                    # --- INIZIO NUOVA TABELLA COMPATTA ---
+                    st.write("---")
+                    h1, h2, h3 = st.columns([4, 0.8, 0.8])
+                    h1.caption("**DESCRIZIONE**")
+                    h2.caption("**VEDI**")
+                    h3.caption("**ELIM**")
+
                     for d in docs.data:
-                        # Tutto questo blocco deve essere indentato dentro il FOR
-                        col_a, col_b, col_c = st.columns([3, 1, 1])
+                        with st.container():
+                            # Usiamo pesi più piccoli per i pulsanti (0.8) per stringere ancora di più
+                            c1, c2, c3 = st.columns([4, 0.8, 0.8])
 
-                        col_a.write(f"🔹 {d['nome_documento']}")
-                        col_b.link_button("👁️ Apri", d['link_file'])
+                            with c1:
+                                # markdown è più "sottile" di st.write
+                                st.markdown(f"🔹 {d['nome_documento']}")
 
-                        # Il tasto elimina deve essere indentato bene per ogni riga
-                        if col_c.button("🗑️", key=f"del_{d['id']}", help="Elimina questo documento"):
-                            try:
-                                # 1. Eliminiamo dal DB
-                                sb.table("documenti_arredo").delete().eq("id", d['id']).execute()
+                            with c2:
+                                # Solo l'icona per risparmiare spazio
+                                st.link_button("👁️", d['link_file'], use_container_width=True)
 
-                                # 2. Eliminiamo dallo Storage
-                                path_to_remove = d['link_file'].split('/')[-1]
-                                full_path = f"{id_parent}/{path_to_remove}"
-                                sb.storage.from_("documenti_proprieta").remove([full_path])
+                            with c3:
+                                if st.button("🗑️", key=f"del_{d['id']}", use_container_width=True):
+                                    try:
+                                        # 1. Eliminiamo dal DB
+                                        sb.table("documenti_arredo").delete().eq("id", d['id']).execute()
 
-                                st.toast(f"Documento '{d['nome_documento']}' rimosso!")
-                                time.sleep(1)
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Errore durante l'eliminazione: {e}")
+                                        # 2. Eliminiamo dallo Storage (tua logica originale)
+                                        path_to_remove = d['link_file'].split('/')[-1]
+                                        full_path = f"{id_parent}/{path_to_remove}"
+                                        sb.storage.from_("documenti_proprieta").remove([full_path])
+
+                                        st.toast(f"Rimosso!")
+                                        time.sleep(1)
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Errore: {e}")
+                    st.write("---")
+                else:
+                    st.info("Nessun documento caricato per questo articolo.")
+
+
                 else:
                     st.info("Nessun documento caricato per questo articolo.")
 
