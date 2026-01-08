@@ -487,9 +487,13 @@ else:
                         }
                         inv_map = {v: k for k, v in mappa_colonne.items()}
 
+                    # Sistemiamo le date: se sono diventate '0', rimettiamole vuote (None)
+                        if 'Data Scadenza' in df_e.columns:
+                            df_e['Data Scadenza'] = df_e['Data Scadenza'].replace(0, None).replace("0", None)
+
+                        # Ora rinominiamo per il database
                         df_db = df_e.rename(columns=inv_map)
                         df_db['stanza'] = sn
-
                         # Formattazione date (PULITA PER SUPABASE)
                         if 'data_scadenza' in df_db.columns:
                             df_db['data_scadenza'] = df_db['data_scadenza'].apply(
