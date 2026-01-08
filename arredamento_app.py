@@ -487,9 +487,11 @@ else:
                         }
                         inv_map = {v: k for k, v in mappa_colonne.items()}
 
-                    # Sistemiamo le date: se sono diventate '0', rimettiamole vuote (None)
-                        if 'Data Scadenza' in df_e.columns:
-                            df_e['Data Scadenza'] = df_e['Data Scadenza'].replace(0, None).replace("0", None)
+                        # Sistemiamo le date: se sono diventate '0', rimettiamole vuote (None)
+                        df_e['Data Scadenza'] = pd.to_datetime(df_e['Data Scadenza'], errors='coerce')
+                        
+                        # Trasformiamo i NaT in None reali, così il database è felice
+                        df_e['Data Scadenza'] = df_e['Data Scadenza'].where(df_e['Data Scadenza'].notnull(), None)
 
                         # Ora rinominiamo per il database
                         df_db = df_e.rename(columns=inv_map)
