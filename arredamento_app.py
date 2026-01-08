@@ -261,27 +261,30 @@ else:
                     st.info("Nessun documento caricato per questo articolo.")
 
                 st.write("---")
+                # 1. Inizializziamo il contatore per forzare il refresh
+                if f"cnt_{sn}" not in st.session_state:
+                    st.session_state[f"cnt_{sn}"] = 0
 
-                # 1. IL PONTE (Questo lo puoi modificare quanto vuoi!)
-                if f"reset_desc_{sn}" not in st.session_state:
-                    st.session_state[f"reset_desc_{sn}"] = ""
-
-                # 2. IL WIDGET (Legge dal ponte, ha la sua key ma non la tocchiamo più nel codice)
+                # 2. La KEY del widget cambia ogni volta (grazie al contatore)
                 nome_doc = st.text_input(
                     "Descrizione documento (es: Fattura Forno)",
-                    value=st.session_state[f"reset_desc_{sn}"],
-                    key=f"input_reale_{sn}"
+                    value="",
+                    key=f"input_doc_{sn}_{st.session_state[f'cnt_{sn}']}"
                 )
 
-                file_caricato = st.file_uploader("Carica PDF o Immagine", type=['pdf', 'png', 'jpg', 'jpeg'], key=f"up_doc_{sn}")
+                file_caricato = st.file_uploader(
+                    "Carica PDF o Immagine",
+                    type=['pdf', 'png', 'jpg', 'jpeg'],
+                    key=f"up_doc_{sn}_{st.session_state[f'cnt_{sn}']}"
+                )
 
                 if st.button("🚀 Salva Documento", key=f"btn_save_doc_{sn}"):
                     if file_caricato and nome_doc:
                         try:
+                            # --- TUTTO QUESTO DEVE ESSERE SOTTO IL TRY ---
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-                            # --- SOLUZIONE ERRORE 400 (INVALID KEY) ---
-                            # Puliamo il nome del file da spazi e accenti
+                            # Pulizia nome file per evitare Errore 400
                             nome_file_pulito = file_caricato.name.replace(" ", "_").replace("è", "e").replace("à", "a").replace("ò", "o")
                             file_path = f"{id_parent}/{timestamp}_{nome_file_pulito}"
 
@@ -292,7 +295,7 @@ else:
                                 {"content-type": file_caricato.type}
                             )
 
-                            # URL Pubblico e inserimento DB (rimangono uguali)
+                            # URL Pubblico e inserimento nel Database
                             url_doc = sb.storage.from_("documenti_proprieta").get_public_url(file_path)
                             sb.table("documenti_arredo").insert({
                                 "parent_id": id_parent,
@@ -300,26 +303,20 @@ else:
                                 "link_file": url_doc
                             }).execute()
 
-                            # --- IL "NOME_VARIABILE = ''" CHE CERCAVI ---
-                            # Svuotiamo il ponte e forziamo il reset della key interna
-                            st.session_state[f"reset_desc_{sn}"] = ""
-
-                            # --- IL TRUCCO FINALE (VB STYLE) ---
-                            # Modifichiamo SOLO il ponte.
-                            # NON scrivere st.session_state[f"input_reale_{sn}"] = "" <-- QUESTA CANCELLALA!
-
-                            st.session_state[f"reset_desc_{sn}"] = ""
+                            # --- IL COLPO DI GRAZIA PER SBIANCARE ---
+                            # Aumentiamo il contatore: al rerun la KEY cambierà e il campo sarà vuoto
+                            st.session_state[f"cnt_{sn}"] += 1
 
                             st.success(f"Documento '{nome_doc}' salvato!")
                             time.sleep(1)
-                            st.rerun() # Al riavvio, il widget vedrà il ponte vuoto e si pulirà!
-
+                            st.rerun()
 
                         except Exception as e:
                             st.error(f"Errore: {e}")
-
                     else:
                         st.warning("Compila descrizione e seleziona un file!")
+
+
 
             # --- 3. INIZIO FORM TABELLA ---
             with st.form(f"f_{sn}"):
