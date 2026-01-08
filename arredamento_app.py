@@ -189,8 +189,52 @@ else:
         is_wish = "✨" in sel
         sn = "Wishlist" if is_wish else sel.replace("📦 ", "").capitalize()
         st.title(f"{sel}")
+
+        # 1. RECUPERO DATI GLOBALI (Per la Dashboard di tutta la casa)
+        res_tutto = sb.table("arredamento").select("id", "Prezzo").execute()
+        df_tutto = pd.DataFrame(res_tutto.data)
+
+        # --- DASHBOARD GLOBALE ---
+        st.write("### 📊 Riepilogo Totale Proprietà")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Totale Arredi", f"{len(df_tutto)} pz")
+        with c2:
+            prezzi = pd.to_numeric(df_tutto['Prezzo'], errors='coerce').fillna(0)
+            st.metric("Valore Totale", f"€ {prezzi.sum():,.2f}")
+        with c3:
+            # Conteggio documenti totale
+            res_docs = sb.table("documenti_arredo").select("id", count="exact").execute()
+            st.metric("Documenti", f"{res_docs.count if res_docs.count else 0} file")
+
+        st.divider()        
+
+        # --- RICERCA RAPIDA DOCUMENTI ---
+        with st.expander("🔍 Cerca un documento in tutta la Proprietà"):
+            cerca_doc = st.text_input("Inserisci il nome del file (es: fattura, progetto...):", key="search_global")
+            
+            if cerca_doc:
+                # Cerchiamo nel DB in modo "fuzzy" (ilike trova anche parti del nome)
+                risultati = sb.table("documenti_arredo").select("*").ilike("nome_documento", f"%{cerca_doc}%").execute()
+                
+                if risultati.data:
+                    st.write(f"Trovati {len(risultati.data)} documenti:")
+                    for r in risultati.data:
+                        col_info, col_btn = st.columns([4, 1])
+                        with col_info:
+                            st.markdown(f"📄 **{r['nome_documento']}**")
+                        with col_btn:
+                            st.link_button("👁️ Apri", r['link_file'], use_container_width=True)
+                else:
+                    st.info("Nessun documento trovato con questo nome.")
+
+        
+        st.divider()        #un po' di spazio in fondo (evviva)
+
         res = sb.table("arredamento").select("*").eq("stanza", sn).execute()
         df = clean_df(pd.DataFrame(res.data))
+        
+        
         if not df.empty:
             is_closed = any(df['Stanza Chiusa'] == True)
             if is_closed and not is_wish: st.markdown(f'<div class="gold-seal">🏆 COMPLIMENTI! La stanza {sn} è completata!</div>', unsafe_allow_html=True)
@@ -369,9 +413,6 @@ else:
                     "Link": st.column_config.LinkColumn("🔗 Web", display_text="Apri"),
                     "Foto": st.column_config.LinkColumn("📸 Foto", display_text="Vedi")
                 }
-
-# --- 3. EDITOR ---
-# Non droppiamo l'id qui, lo teniamo nel DataFrame!
 
 # --- 3. EDITOR ---
                 df_per_editor = df.drop(columns=['DV', 'stanza'])
