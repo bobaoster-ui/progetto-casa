@@ -261,9 +261,19 @@ else:
                     st.info("Nessun documento caricato per questo articolo.")
 
                 st.write("---")
-                nome_doc = st.text_input("Descrizione documento (es: Fattura Forno)", key=f"desc_doc_{sn}")
-                file_caricato = st.file_uploader("Carica PDF o Immagine", type=['pdf', 'png', 'jpg', 'jpeg'], key=f"up_doc_{sn}")
+                # 1. Inizializziamo la variabile che conterrà il testo "pulito"
+                if f"valore_pulito_{sn}" not in st.session_state:
+                    st.session_state[f"valore_pulito_{sn}"] = ""
 
+                # 2. Colleghiamo il campo al valore dello stato usando 'value'
+                nome_doc = st.text_input(
+                    "Descrizione documento (es: Fattura Forno)",
+                    value=st.session_state[f"valore_pulito_{sn}"], # <--- Fondamentale!
+                    key=f"desc_doc_{sn}"
+                )
+
+
+                file_caricato = st.file_uploader("Carica PDF o Immagine", type=['pdf', 'png', 'jpg', 'jpeg'], key=f"up_doc_{sn}")
 
                 if st.button("🚀 Salva Documento", key=f"btn_save_doc_{sn}"):
                     if file_caricato and nome_doc:
@@ -287,6 +297,10 @@ else:
                                 "nome_documento": nome_doc,
                                 "link_file": url_doc
                             }).execute()
+
+                            # --- IL TRUCCO PER SBIANCARE ---
+                            # Prima del rerun, svuotiamo la variabile dello stato
+                            st.session_state[f"valore_pulito_{sn}"] = ""
 
                             st.success(f"Documento '{nome_doc}' salvato!")
                             time.sleep(1)
