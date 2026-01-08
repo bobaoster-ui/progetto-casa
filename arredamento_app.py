@@ -191,23 +191,33 @@ else:
         st.title(f"{sel}")
 
         # 1. RECUPERO DATI GLOBALI (Per la Dashboard di tutta la casa)
-        res_tutto = sb.table("arredamento").select("id", "Prezzo").execute()
+        res_tutto = sb.table("arredamento").select("*").execute()
         df_tutto = pd.DataFrame(res_tutto.data)
 
         # --- DASHBOARD GLOBALE ---
         st.write("### 📊 Riepilogo Totale Proprietà")
         c1, c2, c3 = st.columns(3)
+
         with c1:
             st.metric("Totale Arredi", f"{len(df_tutto)} pz")
+
         with c2:
-            prezzi = pd.to_numeric(df_tutto['Prezzo'], errors='coerce').fillna(0)
-            st.metric("Valore Totale", f"€ {prezzi.sum():,.2f}")
+            # Usiamo 'Costo' visto che ora sappiamo che si chiama così!
+            if 'Costo' in df_tutto.columns:
+                prezzi = pd.to_numeric(df_tutto['Costo'], errors='coerce').fillna(0)
+                st.metric("Valore Totale", f"€ {prezzi.sum():,.2f}")
+            else:
+                st.metric("Valore Totale", "N/A (Verifica colonna)")
+
         with c3:
             # Conteggio documenti totale
-            res_docs = sb.table("documenti_arredo").select("id", count="exact").execute()
-            st.metric("Documenti", f"{res_docs.count if res_docs.count else 0} file")
+            try:
+                res_docs = sb.table("documenti_arredo").select("id", count="exact").execute()
+                st.metric("Documenti", f"{res_docs.count if res_docs.count else 0} file")
+            except:
+                st.metric("Documenti", "0")
 
-        st.divider()        
+        st.divider()
 
         # --- RICERCA RAPIDA DOCUMENTI ---
         with st.expander("🔍 Cerca un documento in tutta la Proprietà"):
