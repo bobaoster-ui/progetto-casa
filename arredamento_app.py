@@ -278,7 +278,12 @@ else:
                     if file_caricato and nome_doc:
                         try:
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                            file_path = f"{id_parent}/{timestamp}_{file_caricato.name}"
+                            # --- AGGIUNGI QUESTA RIGA PER PULIRE IL NOME ---
+                            # Sostituiamo gli spazi con "_" e togliamo i caratteri strani
+                            nome_file_pulito = file_caricato.name.replace(" ", "_").replace("è", "e").replace("ò", "o").replace("à", "a")
+
+                            # Usiamo il nome pulito nel percorso
+                            file_path = f"{id_parent}/{timestamp}_{nome_file_pulito}"
 
                             # Upload nello Storage
                             sb.storage.from_("documenti_proprieta").upload(
