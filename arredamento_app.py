@@ -235,47 +235,54 @@ else:
                 docs = sb.table("documenti_arredo").select("*").eq("parent_id", id_parent).execute()
 
                 if docs.data:
-                    # --- CSS AGGRESSIVO PER COMPATTARE RIGHE ---
+                    # --- CSS PULITO (senza sovrapposizioni) ---
                     st.markdown("""
                         <style>
+                            /* Spazio tra le righe più naturale */
                             [data-testid="stVerticalBlock"] > div:has(div[data-testid="stColumn"]) {
-                                gap: 0rem !important; margin-bottom: -18px !important;
+                                gap: 0.2rem !important;
+                                margin-bottom: 0px !important;
                             }
-                            button[kind="secondary"], a[role="button"] {
-                                height: 28px !important; line-height: 28px !important;
-                                padding: 0px !important; font-size: 14px !important;
+                            /* Testo piccolo per la tabella */
+                            .small-text {
+                                font-size: 14px !important;
                             }
-                            .stMarkdown p { font-size: 14px !important; margin: 0px !important; }
                         </style>
                     """, unsafe_allow_html=True)
 
                     st.write("---")
-                    h1, h2, h3 = st.columns([6, 0.6, 0.6])
-                    h1.caption("**DESCRIZIONE**")
-                    h2.caption("**VEDI**")
-                    h3.caption("**ELIM**")
+                    # Intestazione
+                    h1, h2, h3 = st.columns([6, 1, 1])
+                    h1.caption("DESCRIZIONE")
+                    h2.caption("VEDI")
+                    h3.caption("ELIM")
 
                     for d in docs.data:
-                        with st.container():
-                            c1, c2, c3 = st.columns([6, 0.6, 0.6])
-                            with c1:
-                                st.markdown(f"🔹 {d['nome_documento']}")
-                            with c2:
-                                st.link_button("👁️", d['link_file'], use_container_width=True)
-                            with c3:
-                                # QUI IL CODICE CORRETTO SENZA 'PASS'
-                                if st.button("🗑️", key=f"del_{d['id']}", use_container_width=True):
-                                    try:
-                                        sb.table("documenti_arredo").delete().eq("id", d['id']).execute()
-                                        path_to_remove = d['link_file'].split('/')[-1]
-                                        full_path = f"{id_parent}/{path_to_remove}"
-                                        sb.storage.from_("documenti_proprieta").remove([full_path])
-                                        st.toast("Rimosso!")
-                                        time.sleep(0.5)
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Errore: {e}")
+                        c1, c2, c3 = st.columns([6, 1, 1])
+
+                        with c1:
+                            st.markdown(f"<div class='small-text'>🔹 {d['nome_documento']}</div>", unsafe_allow_html=True)
+
+                        with c2:
+                            # Link testuale invece del bottone
+                            st.markdown(f"[:eye: Apri]({d['link_file']})")
+
+                        with c3:
+                            # Bottone "invisibile" che sembra testo
+                            if st.button("🗑️ Canc", key=f"del_{d['id']}", help="Elimina documento"):
+                                try:
+                                    sb.table("documenti_arredo").delete().eq("id", d['id']).execute()
+                                    path_to_remove = d['link_file'].split('/')[-1]
+                                    full_path = f"{id_parent}/{path_to_remove}"
+                                    sb.storage.from_("documenti_proprieta").remove([full_path])
+                                    st.toast("Rimosso!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Errore: {e}")
                     st.write("---")
+
+
+
                 else:
                     st.info("Nessun documento caricato.")
 
