@@ -261,15 +261,16 @@ else:
                     st.info("Nessun documento caricato per questo articolo.")
 
                 st.write("---")
-                # 1. Inizializziamo la variabile che conterrà il testo "pulito"
+
+                # 1. Inizializziamo il nostro "ponte" per il reset
                 if f"reset_desc_{sn}" not in st.session_state:
                     st.session_state[f"reset_desc_{sn}"] = ""
 
-                # 2. Il widget: il 'value' legge dal ponte, ma la 'key' ha un nome diverso!
+                # 2. Il widget legge il valore dal ponte
                 nome_doc = st.text_input(
                     "Descrizione documento (es: Fattura Forno)",
                     value=st.session_state[f"reset_desc_{sn}"],
-                    key=f"input_reale_{sn}" # <--- Questa key NON deve essere toccata nel codice
+                    key=f"input_reale_{sn}"
                 )
 
                 file_caricato = st.file_uploader("Carica PDF o Immagine", type=['pdf', 'png', 'jpg', 'jpeg'], key=f"up_doc_{sn}")
@@ -278,11 +279,10 @@ else:
                     if file_caricato and nome_doc:
                         try:
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                            # --- AGGIUNGI QUESTA RIGA PER PULIRE IL NOME ---
-                            # Sostituiamo gli spazi con "_" e togliamo i caratteri strani
-                            nome_file_pulito = file_caricato.name.replace(" ", "_").replace("è", "e").replace("ò", "o").replace("à", "a")
 
-                            # Usiamo il nome pulito nel percorso
+                            # --- SOLUZIONE ERRORE 400 (INVALID KEY) ---
+                            # Puliamo il nome del file da spazi e accenti
+                            nome_file_pulito = file_caricato.name.replace(" ", "_").replace("è", "e").replace("à", "a").replace("ò", "o")
                             file_path = f"{id_parent}/{timestamp}_{nome_file_pulito}"
 
                             # Upload nello Storage
@@ -292,26 +292,27 @@ else:
                                 {"content-type": file_caricato.type}
                             )
 
-                            # URL Pubblico
+                            # URL Pubblico e inserimento DB (rimangono uguali)
                             url_doc = sb.storage.from_("documenti_proprieta").get_public_url(file_path)
-
-                            # Record nel Database
                             sb.table("documenti_arredo").insert({
                                 "parent_id": id_parent,
                                 "nome_documento": nome_doc,
                                 "link_file": url_doc
                             }).execute()
 
-                            # 2. Resetti la "memoria interna" di Streamlit (Sulla riga sotto!)
-                            # --- IL TRUCCO PER SBIANCARE ---
-                            # Modifichiamo SOLO il valore del ponte
+                            # --- IL "NOME_VARIABILE = ''" CHE CERCAVI ---
+                            # Svuotiamo il ponte e forziamo il reset della key interna
                             st.session_state[f"reset_desc_{sn}"] = ""
+                            if f"input_reale_{sn}" in st.session_state:
+                                st.session_state[f"input_reale_{sn}"] = ""
 
                             st.success(f"Documento '{nome_doc}' salvato!")
                             time.sleep(1)
                             st.rerun()
+
                         except Exception as e:
                             st.error(f"Errore: {e}")
+
                     else:
                         st.warning("Compila descrizione e seleziona un file!")
 
