@@ -276,10 +276,6 @@ else:
                     st.info("Nessun documento caricato per questo articolo.")
 
 
-                else:
-                    st.info("Nessun documento caricato per questo articolo.")
-
-                st.write("---")
                 # 1. Inizializziamo il contatore per forzare il refresh
                 if f"cnt_{sn}" not in st.session_state:
                     st.session_state[f"cnt_{sn}"] = 0
