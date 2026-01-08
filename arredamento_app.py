@@ -488,19 +488,22 @@ else:
                         inv_map = {v: k for k, v in mappa_colonne.items()}
 
                         # Sistemiamo le date: se sono diventate '0', rimettiamole vuote (None)
+                        # Forza la colonna a essere di tipo data e trasforma errori in NaT
                         df_e['Data Scadenza'] = pd.to_datetime(df_e['Data Scadenza'], errors='coerce')
-                        
-                        # Trasformiamo i NaT in None reali, così il database è felice
-                        df_e['Data Scadenza'] = df_e['Data Scadenza'].where(df_e['Data Scadenza'].notnull(), None)
 
+                        # TRUCCO FINALE: Trasforma in stringa formattata YYYY-MM-DD oppure None
+                        # Questo bypassa ogni problema di formato di Pandas/Supabase
+                        df_e['Data Scadenza'] = df_e['Data Scadenza'].apply(
+                            lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) and hasattr(x, 'strftime') else None
+                        )
                         # Ora rinominiamo per il database
                         df_db = df_e.rename(columns=inv_map)
                         df_db['stanza'] = sn
                         # Formattazione date (PULITA PER SUPABASE)
-                        if 'data_scadenza' in df_db.columns:
-                            df_db['data_scadenza'] = df_db['data_scadenza'].apply(
-                                lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) and hasattr(x, 'strftime') else None
-                            )
+#                        if 'data_scadenza' in df_db.columns:
+#                            df_db['data_scadenza'] = df_db['data_scadenza'].apply(
+#                                lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) and hasattr(x, 'strftime') else None
+#                            )
 
                         # --- TRASFORMAZIONE CON PULIZIA NaT/NaN ---
                         # Questa riga risolve l'errore "NaTType is not JSON serializable"
