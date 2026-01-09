@@ -501,12 +501,22 @@ else:
 
                         # 4. IL FILTRO LASER: Se dopo il rename qualche '0' è rimasto, lo polverizziamo
                         if 'data_scadenza' in df_db.columns:
-                        # --- TRASFORMAZIONE CON PULIZIA TOTALE ---
-                        # Prima di convertire in dizionario, forziamo i 'None' reali su tutto il DataFrame
-                            df_db = df_db.replace(['0', 0, '0000-00-00', 'nan', 'NaN', 'None', 'NaT'], None)
+                        # --- TRASFORMAZIONE CON PULIZIA TOTALE (PROTEGGIAMO L'ID) ---
+                        # Creiamo una lista di colonne da pulire (TUTTE tranne l'id)
+                            colonne_da_pulire = [c for c in df_db.columns if c != 'id']
                         
+                        # Applichiamo la pulizia solo a quelle colonne
+                        df_db[colonne_da_pulire] = df_db[colonne_da_pulire].replace(['0', 0, '0000-00-00', 'nan', 'NaN', 'None', 'NaT', '1970-01-01'], None)
+                        
+                        # Trasformiamo in dizionario finale assicurandoci che i null siano reali
                         dati_finali = df_db.where(pd.notnull(df_db), None).to_dict(orient='records')
-                        # Eseguiamo l'UPSERT
+                        
+                        # TOCCO MAGICO: Se è una riga nuova (id è null o NaN), rimuoviamo proprio la chiave 'id' 
+                        # così Supabase ne genera uno nuovo automaticamente (Auto-increment)
+                        for riga in dati_finali:
+                            if riga.get('id') is None or pd.isna(riga.get('id')):
+                                riga.pop('id', None)
+                                    # Eseguiamo l'UPSERT
                         sb.table("arredamento").upsert(dati_finali, on_conflict="id").execute()
 
                         st.balloons()
