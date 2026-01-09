@@ -516,11 +516,18 @@ else:
 
                         # --- IL FILTRO DEFINITIVO ---
                         for riga in dati_finali:
-                            # 1. Gestione ID (Rimuoviamo lo ZERO per forzare l'auto-incremento)
-                            valore_id = riga.get('id')
-                            if valore_id is None or pd.isna(valore_id) or valore_id == 0 or valore_id == '0':
-                                riga.pop('id', None)
-                            
+                            # --- IL FILTRO DEFINITIVO ---
+                            # Troviamo l'ID massimo attuale per generare i nuovi
+                            max_id = df_db['id'].max() if not df_db.empty else 0
+                            nuovo_id_counter = int(max_id) + 1
+
+                            for riga in dati_finali:
+                                # 1. Gestione ID (Se è 0 o mancante, assegniamo noi il prossimo numero)
+                                valore_id = riga.get('id')
+                                if valore_id is None or pd.isna(valore_id) or valore_id == 0 or valore_id == '0':
+                                    riga['id'] = nuovo_id_counter
+                                    nuovo_id_counter += 1 # Incrementiamo per la riga successiva
+
                             # --- LOGICA DI CALCOLO RIGOROSA ---
                             p_pieno = float(riga.get('prezzo_pieno') or 0)
                             s_percento = float(riga.get('sconto_percentuale') or 0) # Nome esatto dal DB
