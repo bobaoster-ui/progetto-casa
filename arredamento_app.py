@@ -527,7 +527,6 @@ else:
 
                             # 2. LOGICA DI CALCOLO RIGOROSA
                             if s_percento >= 99.0:
-                                riga['costo'] = 0.0
                                 riga['importo_totale'] = 0.0
                                 riga['sconto_perc'] = 100.0
                             elif p_pieno > 0:
