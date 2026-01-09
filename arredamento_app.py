@@ -519,19 +519,20 @@ else:
                             # 1. Gestione ID (quella che già funziona)
                             if riga.get('id') is None or pd.isna(riga.get('id')):
                                 riga.pop('id', None)
+
+                        # --- QUI INSERISCI LA LOGICA CHE ABBIAMO SCELTO ---
+                            costo = riga.get('costo_unitario', 0) if riga.get('costo_unitario') is not None else 0
+                            qta = riga.get('quantita', 1) if riga.get('quantita') is not None else 1
+                            sconto = riga.get('sconto_percentuale', 0) if riga.get('sconto_percentuale') is not None else 0
                             
-                            # 2. FORZATURA SCONTO (Il killer del bug)
-                            # Recuperiamo i valori in modo sicuro
-                            sconto = riga.get('sconto_percentuale', 0)
-                            costo = riga.get('costo_unitario', 0)
-                            qta = riga.get('quantita', 1)
-                            
-                            # Se lo sconto è 100 o i calcoli dicono 0, forziamo lo zero assoluto
-                            if sconto == 100:
+                            # Caso A: Regalo (Sconto 100%)
+                            if sconto == 100 or sconto == 100.0:
                                 riga['importo_totale'] = 0.0
+                            
+                            # Caso B: Calcolo standard (Prezzo * Qta)
                             else:
-                                # Ricalcoliamo comunque per sicurezza
-                                riga['importo_totale'] = float(costo) * float(qta) * (1 - float(sconto) / 100)
+                                # Ricalcoliamo l'importo totale applicando lo sconto (se presente)
+                                riga['importo_totale'] = float(costo) * float(qta) * (1 - float(sconto) / 100)                            
 
                         # TOCCO MAGICO: Se è una riga nuova (id è null o NaN), rimuoviamo proprio la chiave 'id' 
                         # così Supabase ne genera uno nuovo automaticamente (Auto-increment)
