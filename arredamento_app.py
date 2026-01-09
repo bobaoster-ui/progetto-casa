@@ -516,32 +516,31 @@ else:
 
                         # --- IL FILTRO DEFINITIVO ---
                         for riga in dati_finali:
-                            # 1. Gestione ID (Rimuoviamo anche lo ZERO per forzare l'auto-incremento)
+                            # 1. Gestione ID (Rimuoviamo lo ZERO per forzare l'auto-incremento)
                             valore_id = riga.get('id')
-                            if valore_id is None or pd.isna(valore_id') or valore_id == 0 or valore_id == '0':
+                            if valore_id is None or pd.isna(valore_id) or valore_id == 0 or valore_id == '0':
                                 riga.pop('id', None)
                             
                             # --- LOGICA DI CALCOLO RIGOROSA ---
-                            # Usiamo .get() con 0 come default e forziamo a float
                             p_pieno = float(riga.get('prezzo_pieno') or 0)
-                            sconto_perc = float(riga.get('sconto_percentuale') or 0)
+                            s_percento = float(riga.get('sconto_percentuale') or 0) # Nome esatto dal DB
                             qta = float(riga.get('acquistato') or 1)
                             costo_u = float(riga.get('costo') or 0)
 
-                            # CASO 1: REGALO (Sconto 100%) - MASSIMA PRIORITÀ
-                            if sconto_perc >= 100:
+                            # CASO 1: REGALO (Sconto 100%)
+                            if s_percento >= 100:
                                 riga['importo_totale'] = 0.0
                             
                             # CASO 2: SCONTO ATTIVO (Usa Prezzo Pieno)
                             elif p_pieno > 0:
-                                nuovo_costo = p_pieno * (1 - (sconto_perc / 100))
+                                nuovo_costo = p_pieno * (1 - (s_percento / 100))
                                 riga['costo'] = nuovo_costo
                                 riga['importo_totale'] = nuovo_costo * qta
                             
                             # CASO 3: CALCOLO STANDARD (Usa Costo Unitario)
                             else:
                                 riga['importo_totale'] = costo_u * qta
-
+                                
                         # TOCCO MAGICO: Se è una riga nuova (id è null o NaN), rimuoviamo proprio la chiave 'id' 
                         # così Supabase ne genera uno nuovo automaticamente (Auto-increment)
                         # Eseguiamo l'UPSERT
