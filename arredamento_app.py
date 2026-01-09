@@ -515,39 +515,45 @@ else:
                         dati_finali = df_db.where(pd.notnull(df_db), None).to_dict(orient='records')
 
                         # --- IL FILTRO DEFINITIVO ---
+                        # Calcoliamo l'ID massimo una volta sola fuori dal ciclo
+                        try:
+                            max_id = int(df_db['id'].max()) if not df_db.empty else 100
+                        except:
+                            max_id = 100
+                        
+                        nuovo_id_counter = max_id + 1
+
                         for riga in dati_finali:
-                            # --- IL FILTRO DEFINITIVO ---
-                            # Troviamo l'ID massimo attuale per generare i nuovi
-                            max_id = df_db['id'].max() if not df_db.empty else 0
-                            nuovo_id_counter = int(max_id) + 1
+                            # 1. FORZATURA ID (Se è 0, null o stringa '0', assegniamo il nuovo)
+                            valore_id = riga.get('id')
+                            if valore_id is None or pd.isna(valore_id) or str(valore_id) == '0' or valore_id == 0:
+                                riga['id'] = nuovo_id_counter
+                                nuovo_id_counter += 1
 
-                            for riga in dati_finali:
-                                # 1. Gestione ID (Se è 0 o mancante, assegniamo noi il prossimo numero)
-                                valore_id = riga.get('id')
-                                if valore_id is None or pd.isna(valore_id) or valore_id == 0 or valore_id == '0':
-                                    riga['id'] = nuovo_id_counter
-                                    nuovo_id_counter += 1 # Incrementiamo per la riga successiva
-
-                            # --- LOGICA DI CALCOLO RIGOROSA ---
+                            # 2. LOGICA DI CALCOLO RIGOROSA
+                            # Usiamo .get() e forziamo a float, gestendo eventuali None
                             p_pieno = float(riga.get('prezzo_pieno') or 0)
-                            s_percento = float(riga.get('sconto_percentuale') or 0) # Nome esatto dal DB
+                            # Qui sta il trucco: leggiamo lo sconto in modo super-sicuro
+                            s_percento = float(riga.get('sconto_percentuale') or 0)
                             qta = float(riga.get('acquistato') or 1)
                             costo_u = float(riga.get('costo') or 0)
 
-                            # CASO 1: REGALO (Sconto 100%)
-                            if s_percento >= 100:
+                            # CASO REGALO (Sconto 100%): Se lo sconto è >= 99, AZZERIAMO TUTTO
+                            if s_percento >= 99.0:
+                                riga['costo'] = 0.0
                                 riga['importo_totale'] = 0.0
+                                riga['sconto_percentuale'] = 100.0
                             
-                            # CASO 2: SCONTO ATTIVO (Usa Prezzo Pieno)
+                            # CASO SCONTO (Se c'è un Prezzo Pieno)
                             elif p_pieno > 0:
                                 nuovo_costo = p_pieno * (1 - (s_percento / 100))
                                 riga['costo'] = nuovo_costo
                                 riga['importo_totale'] = nuovo_costo * qta
                             
-                            # CASO 3: CALCOLO STANDARD (Usa Costo Unitario)
+                            # CASO STANDARD
                             else:
                                 riga['importo_totale'] = costo_u * qta
-                                
+
                         # TOCCO MAGICO: Se è una riga nuova (id è null o NaN), rimuoviamo proprio la chiave 'id' 
                         # così Supabase ne genera uno nuovo automaticamente (Auto-increment)
                         # Eseguiamo l'UPSERT
