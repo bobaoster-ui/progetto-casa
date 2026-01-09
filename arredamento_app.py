@@ -501,12 +501,11 @@ else:
 
                         # 4. IL FILTRO LASER: Se dopo il rename qualche '0' è rimasto, lo polverizziamo
                         if 'data_scadenza' in df_db.columns:
-                            df_db['data_scadenza'] = df_db['data_scadenza'].replace(['0', 0, '0000-00-00', 'nan', 'NaN'], None)
-
-                        # --- TRASFORMAZIONE CON PULIZIA NaT/NaN ---
-                        # Questa riga risolve l'errore "NaTType is not JSON serializable"
+                        # --- TRASFORMAZIONE CON PULIZIA TOTALE ---
+                        # Prima di convertire in dizionario, forziamo i 'None' reali su tutto il DataFrame
+                            df_db = df_db.replace(['0', 0, '0000-00-00', 'nan', 'NaN', 'None', 'NaT'], None)
+                        
                         dati_finali = df_db.where(pd.notnull(df_db), None).to_dict(orient='records')
-
                         # Eseguiamo l'UPSERT
                         sb.table("arredamento").upsert(dati_finali, on_conflict="id").execute()
 
