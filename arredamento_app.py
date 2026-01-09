@@ -520,19 +520,27 @@ else:
                             if riga.get('id') is None or pd.isna(riga.get('id')):
                                 riga.pop('id', None)
 
-                        # --- QUI INSERISCI LA LOGICA CHE ABBIAMO SCELTO ---
-                            costo = riga.get('costo_unitario', 0) if riga.get('costo_unitario') is not None else 0
-                            qta = riga.get('quantita', 1) if riga.get('quantita') is not None else 1
-                            sconto = riga.get('sconto_percentuale', 0) if riga.get('sconto_percentuale') is not None else 0
-                            
-                            # Caso A: Regalo (Sconto 100%)
-                            if sconto == 100 or sconto == 100.0:
+                            # --- LOGICA DI CALCOLO CON I TUOI NOMI CAMPO ---
+                            p_pieno = float(riga.get('prezzo_pieno', 0) or 0)
+                            sconto_perc = float(riga.get('sconto_percentuale', 0) or 0) # Verifica se è 'sconto_perc' o 'sconto_percentuale' nel DB
+                            qta = float(riga.get('acquistato', 1) or 1) # Usiamo 'acquistato' come quantità
+                            costo_u = float(riga.get('costo', 0) or 0)  # Usiamo 'costo' come costo unitario
+
+                            # CASO 1: REGALO (Sconto 100%)
+                            if sconto_perc == 100:
                                 riga['importo_totale'] = 0.0
                             
-                            # Caso B: Calcolo standard (Prezzo * Qta)
+                            # CASO 2: SCONTO ATTIVO (Usa Prezzo Pieno)
+                            elif p_pieno > 0:
+                                # Calcoliamo il costo unitario scontato
+                                nuovo_costo = p_pieno * (1 - sconto_perc / 100)
+                                riga['costo_unitario'] = nuovo_costo
+                                riga['importo_totale'] = nuovo_costo * qta
+                            
+                            # CASO 3: CALCOLO STANDARD (Usa Costo Unitario)
                             else:
-                                # Ricalcoliamo l'importo totale applicando lo sconto (se presente)
-                                riga['importo_totale'] = float(costo) * float(qta) * (1 - float(sconto) / 100)                            
+                                # Se non c'è prezzo pieno, usiamo il costo inserito a mano
+                                riga['importo_totale'] = costo_u * qta
 
                         # TOCCO MAGICO: Se è una riga nuova (id è null o NaN), rimuoviamo proprio la chiave 'id' 
                         # così Supabase ne genera uno nuovo automaticamente (Auto-increment)
