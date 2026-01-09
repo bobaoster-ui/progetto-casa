@@ -87,7 +87,7 @@ else:
         if st.sidebar.button("📊 GENERA BACKUP TOTALE"):
             try:
                 # 1. Recupero dati da Supabase
-                res_arredo = sb.table("arredamento").select("*").execute()
+                res_arredo = sb.table("arredamento").select("*").order("id").execute()
                 res_docs = sb.table("documenti_arredo").select("*").execute()
 
                 df_arredo = pd.DataFrame(res_arredo.data)
