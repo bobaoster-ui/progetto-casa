@@ -519,16 +519,17 @@ else:
                         righe_esistenti = []
 
                         for riga in dati_finali:
-                            # Recuperiamo i valori
+                            # 1. RECUPERO VALORI (Nomi esatti dallo schema SQL)
                             p_pieno = float(riga.get('prezzo_pieno') or 0)
-                            s_percento = float(riga.get('sconto_percentuale') or 0)
-                            qta = float(riga.get('acquistato') or 1)
-                            costo_u = float(riga.get('costo') or 0)
+                            s_percento = float(riga.get('sconto_perc') or 0) # Da schema: sconto_perc
+                            qta = float(riga.get('acquistato') or 1)         # Da schema: acquistato
+                            costo_u = float(riga.get('costo') or 0)          # Da schema: costo
 
-                            # --- LOGICA DI CALCOLO RIGOROSA ---
+                            # 2. LOGICA DI CALCOLO RIGOROSA
                             if s_percento >= 99.0:
                                 riga['costo'] = 0.0
                                 riga['importo_totale'] = 0.0
+                                riga['sconto_perc'] = 100.0
                             elif p_pieno > 0:
                                 nuovo_costo = p_pieno * (1 - (s_percento / 100))
                                 riga['costo'] = nuovo_costo
@@ -536,11 +537,11 @@ else:
                             else:
                                 riga['importo_totale'] = costo_u * qta
 
-                            # --- GESTIONE ID E SEPARAZIONE ---
+                            # 3. GESTIONE ID (Serial - Auto-incremento)
                             val_id = riga.get('id')
-                            # Se l'ID è 0, None, o NaN, è una riga NUOVA
+                            # Se l'ID è 0, None o NaN, la trattiamo come riga NUOVA
                             if val_id is None or pd.isna(val_id) or str(val_id) == '0' or val_id == 0:
-                                riga.pop('id', None) # Rimuoviamo l'ID per far decidere a Supabase
+                                riga.pop('id', None) # Fondamentale per attivare il 'serial' di Supabase
                                 nuove_righe.append(riga)
                             else:
                                 righe_esistenti.append(riga)
