@@ -487,10 +487,6 @@ else:
                         }
                         inv_map = {v: k for k, v in mappa_colonne.items()}
 
-                        # Ricalcolo forzato del Totale con lo Sconto prima del salvataggio
-                        if 'Sconto %' in df_e.columns and 'Costo Unit.' in df_e.columns:
-                            # Formula: (Prezzo * Quantità) * (1 - Sconto/100)
-                            df_e['Totale'] = (df_e['Costo Unit.'] * df_e['Quantità']) * (1 - df_e['Sconto %'] / 100)
 
                         # 1. Forza la colonna a essere di tipo data e trasforma errori (come lo 0) in NaT
                         df_e['Data Scadenza'] = pd.to_datetime(df_e['Data Scadenza'], errors='coerce')
@@ -505,11 +501,6 @@ else:
                         df_db['stanza'] = sn
 
                         # Qui forziamo il calcolo per il database
-                        if 'importo_totale' in df_db.columns and 'sconto_percentuale' in df_db.columns:
-                            # Se lo sconto è 100, l'importo totale DEVE essere 0
-                            df_db.loc[df_db['sconto_percentuale'] == 100, 'importo_totale'] = 0
-                            # Per gli altri casi, ricalcoliamo per sicurezza
-                            df_db['importo_totale'] = (df_db['costo_unitario'] * df_db['quantita']) * (1 - df_db['sconto_percentuale'] / 100)
 
                         # 4. IL FILTRO LASER: Se dopo il rename qualche '0' è rimasto, lo polverizziamo
                         if 'data_scadenza' in df_db.columns:
@@ -522,13 +513,29 @@ else:
                         
                         # Trasformiamo in dizionario finale assicurandoci che i null siano reali
                         dati_finali = df_db.where(pd.notnull(df_db), None).to_dict(orient='records')
-                        
-                        # TOCCO MAGICO: Se è una riga nuova (id è null o NaN), rimuoviamo proprio la chiave 'id' 
-                        # così Supabase ne genera uno nuovo automaticamente (Auto-increment)
+
+                        # --- IL FILTRO DEFINITIVO ---
                         for riga in dati_finali:
+                            # 1. Gestione ID (quella che già funziona)
                             if riga.get('id') is None or pd.isna(riga.get('id')):
                                 riga.pop('id', None)
-                                    # Eseguiamo l'UPSERT
+                            
+                            # 2. FORZATURA SCONTO (Il killer del bug)
+                            # Recuperiamo i valori in modo sicuro
+                            sconto = riga.get('sconto_percentuale', 0)
+                            costo = riga.get('costo_unitario', 0)
+                            qta = riga.get('quantita', 1)
+                            
+                            # Se lo sconto è 100 o i calcoli dicono 0, forziamo lo zero assoluto
+                            if sconto == 100:
+                                riga['importo_totale'] = 0.0
+                            else:
+                                # Ricalcoliamo comunque per sicurezza
+                                riga['importo_totale'] = float(costo) * float(qta) * (1 - float(sconto) / 100)
+
+                        # TOCCO MAGICO: Se è una riga nuova (id è null o NaN), rimuoviamo proprio la chiave 'id' 
+                        # così Supabase ne genera uno nuovo automaticamente (Auto-increment)
+                        # Eseguiamo l'UPSERT
                         sb.table("arredamento").upsert(dati_finali, on_conflict="id").execute()
 
                         st.balloons()
