@@ -487,6 +487,11 @@ else:
                         }
                         inv_map = {v: k for k, v in mappa_colonne.items()}
 
+                        # Ricalcolo forzato del Totale con lo Sconto prima del salvataggio
+                        if 'Sconto %' in df_e.columns and 'Costo Unit.' in df_e.columns:
+                            # Formula: (Prezzo * Quantità) * (1 - Sconto/100)
+                            df_e['Totale'] = (df_e['Costo Unit.'] * df_e['Quantità']) * (1 - df_e['Sconto %'] / 100)
+
                         # 1. Forza la colonna a essere di tipo data e trasforma errori (come lo 0) in NaT
                         df_e['Data Scadenza'] = pd.to_datetime(df_e['Data Scadenza'], errors='coerce')
 
