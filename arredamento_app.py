@@ -92,6 +92,8 @@ else:
                 res_docs = sb.table("documenti_arredo").select("*").execute()
 
                 df_arredo = pd.DataFrame(res_arredo.data)
+                # Forza l'ordinamento numerico per ID nel DataFrame di Python
+                df_arredo = df_arredo.sort_values(by="id", ascending=True).reset_index(drop=True)
                 df_docs = pd.DataFrame(res_docs.data)
 
                 # 2. Creazione file Excel in memoria
