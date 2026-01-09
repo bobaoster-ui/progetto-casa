@@ -520,26 +520,27 @@ else:
                             if riga.get('id') is None or pd.isna(riga.get('id')):
                                 riga.pop('id', None)
 
-                            # --- LOGICA DI CALCOLO CON I TUOI NOMI CAMPO ---
+                            # --- LOGICA DI CALCOLO DEFINITIVA ---
+                            # Recuperiamo i valori usando i nomi tecnici della tua tabella
                             p_pieno = float(riga.get('prezzo_pieno', 0) or 0)
-                            sconto_perc = float(riga.get('sconto_percentuale', 0) or 0) # Verifica se è 'sconto_perc' o 'sconto_percentuale' nel DB
-                            qta = float(riga.get('acquistato', 1) or 1) # Usiamo 'acquistato' come quantità
-                            costo_u = float(riga.get('costo', 0) or 0)  # Usiamo 'costo' come costo unitario
+                            sconto_perc = float(riga.get('sconto_percentuale', 0) or 0)
+                            qta = float(riga.get('acquistato', 1) or 1)
+                            costo_u = float(riga.get('costo', 0) or 0)
 
                             # CASO 1: REGALO (Sconto 100%)
                             if sconto_perc == 100:
                                 riga['importo_totale'] = 0.0
                             
-                            # CASO 2: SCONTO ATTIVO (Usa Prezzo Pieno)
+                            # CASO 2: SCONTO ATTIVO (Usa Prezzo Pieno se presente)
                             elif p_pieno > 0:
-                                # Calcoliamo il costo unitario scontato
+                                # Se hai messo un Prezzo Pieno, lo sconto agisce su quello
                                 nuovo_costo = p_pieno * (1 - sconto_perc / 100)
-                                riga['costo_unitario'] = nuovo_costo
+                                riga['costo'] = nuovo_costo
                                 riga['importo_totale'] = nuovo_costo * qta
                             
-                            # CASO 3: CALCOLO STANDARD (Usa Costo Unitario)
+                            # CASO 3: SCONTO ZERO o CALCOLO STANDARD (Usa Costo Unitario)
                             else:
-                                # Se non c'è prezzo pieno, usiamo il costo inserito a mano
+                                # Se lo sconto è 0 o non c'è Prezzo Pieno, usa il Costo inserito
                                 riga['importo_totale'] = costo_u * qta
 
                         # TOCCO MAGICO: Se è una riga nuova (id è null o NaN), rimuoviamo proprio la chiave 'id' 
