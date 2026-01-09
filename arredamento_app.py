@@ -504,6 +504,13 @@ else:
                         df_db = df_e.rename(columns=inv_map)
                         df_db['stanza'] = sn
 
+                        # Qui forziamo il calcolo per il database
+                        if 'importo_totale' in df_db.columns and 'sconto_percentuale' in df_db.columns:
+                            # Se lo sconto è 100, l'importo totale DEVE essere 0
+                            df_db.loc[df_db['sconto_percentuale'] == 100, 'importo_totale'] = 0
+                            # Per gli altri casi, ricalcoliamo per sicurezza
+                            df_db['importo_totale'] = (df_db['costo_unitario'] * df_db['quantita']) * (1 - df_db['sconto_percentuale'] / 100)
+
                         # 4. IL FILTRO LASER: Se dopo il rename qualche '0' è rimasto, lo polverizziamo
                         if 'data_scadenza' in df_db.columns:
                         # --- TRASFORMAZIONE CON PULIZIA TOTALE (PROTEGGIAMO L'ID) ---
