@@ -516,31 +516,30 @@ else:
 
                         # --- IL FILTRO DEFINITIVO ---
                         for riga in dati_finali:
-                            # 1. Gestione ID (quella che già funziona)
-                            if riga.get('id') is None or pd.isna(riga.get('id')):
+                            # 1. Gestione ID (Rimuoviamo anche lo ZERO per forzare l'auto-incremento)
+                            valore_id = riga.get('id')
+                            if valore_id is None or pd.isna(valore_id') or valore_id == 0 or valore_id == '0':
                                 riga.pop('id', None)
+                            
+                            # --- LOGICA DI CALCOLO RIGOROSA ---
+                            # Usiamo .get() con 0 come default e forziamo a float
+                            p_pieno = float(riga.get('prezzo_pieno') or 0)
+                            sconto_perc = float(riga.get('sconto_percentuale') or 0)
+                            qta = float(riga.get('acquistato') or 1)
+                            costo_u = float(riga.get('costo') or 0)
 
-                            # --- LOGICA DI CALCOLO DEFINITIVA ---
-                            # Recuperiamo i valori usando i nomi tecnici della tua tabella
-                            p_pieno = float(riga.get('prezzo_pieno', 0) or 0)
-                            sconto_perc = float(riga.get('sconto_percentuale', 0) or 0)
-                            qta = float(riga.get('acquistato', 1) or 1)
-                            costo_u = float(riga.get('costo', 0) or 0)
-
-                            # CASO 1: REGALO (Sconto 100%)
-                            if sconto_perc == 100:
+                            # CASO 1: REGALO (Sconto 100%) - MASSIMA PRIORITÀ
+                            if sconto_perc >= 100:
                                 riga['importo_totale'] = 0.0
                             
-                            # CASO 2: SCONTO ATTIVO (Usa Prezzo Pieno se presente)
+                            # CASO 2: SCONTO ATTIVO (Usa Prezzo Pieno)
                             elif p_pieno > 0:
-                                # Se hai messo un Prezzo Pieno, lo sconto agisce su quello
-                                nuovo_costo = p_pieno * (1 - sconto_perc / 100)
+                                nuovo_costo = p_pieno * (1 - (sconto_perc / 100))
                                 riga['costo'] = nuovo_costo
                                 riga['importo_totale'] = nuovo_costo * qta
                             
-                            # CASO 3: SCONTO ZERO o CALCOLO STANDARD (Usa Costo Unitario)
+                            # CASO 3: CALCOLO STANDARD (Usa Costo Unitario)
                             else:
-                                # Se lo sconto è 0 o non c'è Prezzo Pieno, usa il Costo inserito
                                 riga['importo_totale'] = costo_u * qta
 
                         # TOCCO MAGICO: Se è una riga nuova (id è null o NaN), rimuoviamo proprio la chiave 'id' 
