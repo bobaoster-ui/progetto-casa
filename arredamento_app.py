@@ -88,7 +88,7 @@ else:
             try:
                 # 1. Recupero dati da Supabase
                 # Questa è la "legge" per la Proprietà Jacopo: ordine assoluto per ID
-                res_arredo = sb.table("arredamento").select("*").eq("stanza", sn).order("id").execute()
+                res_arredo = sb.table("arredamento").select("*").order("id").execute()
                 res_docs = sb.table("documenti_arredo").select("*").execute()
 
                 df_arredo = pd.DataFrame(res_arredo.data)
