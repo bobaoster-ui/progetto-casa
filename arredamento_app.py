@@ -260,50 +260,48 @@ else:
         except:
             st.error("❌ Errore di connessione a GitHub per il Manuale.")
 
-
     elif sel == "📥 Carico Rapido":
-            st.markdown(f'<div class="main-header"><h1>Carico Rapido Documenti</h1><p>Cartella: {path_scansioni}</p></div>', unsafe_allow_html=True)
-
-            # Controlliamo se la cartella esiste sul tuo Linux
-            if os.path.exists(path_scansioni):
-                # Lista i file presenti
-                files = [f for f in os.listdir(path_scansioni) if os.path.isfile(os.path.join(path_scansioni, f))]
-                
-                if not files:
-                    st.info("✨ La cartella è pulita! Nessun nuovo file da processare.")
-                    if st.button("Aggiorna 🔄"): st.rerun()
-                else:
-                    st.write(f"Trovati **{len(files)}** file pronti per l'archiviazione nella **Proprietà** Jacopo:")
-                    
-                    for file_name in files:
-                        with st.expander(f"📄 {file_name}", expanded=True):
-                            col_view, col_actions = st.columns([1, 1])
-                            full_path = os.path.join(path_scansioni, file_name)
-                            
-                            with col_view:
-                                # Anteprima se è un'immagine
-                                if file_name.lower().endswith(('.png', '.jpg', '.jpeg')):
-                                    st.image(full_path, use_container_width=True)
-                                else:
-                                    st.caption("📎 File PDF o Documento (anteprima non disponibile)")
-                            
-                            with col_actions:
-                                # Selettore Stanza e Articolo
-                                st_scelta = st.selectbox("A quale stanza appartiene?", ["Seleziona..."] + stanze, key=f"st_{file_name}")
-                                
-                                if st_scelta != "Seleziona...":
-                                    sn_formattata = st_scelta.capitalize()
-                                    res_art = sb.table("arredamento").select("id, articolo").eq("stanza", sn_formattata).execute()
-                                    
-                                    if res_art.data:
-                                        opzioni = {r['articolo']: r['id'] for r in res_art.data}
-                                        art_scelto = st.selectbox("Associa all'articolo:", [""] + list(opzioni.keys()), key=f"art_{file_name}")
-                                        desc_doc = st.text_input("Descrizione documento", value=file_name, key=f"desc_{file_name}")
-                                        
-                                        if st.button("🚀 Archivia", key=f"btn_{file_name}"):
-                                            st.success(f"Socio, sono pronto a caricare {file_name}!")
+            st.markdown(f'<div class="main-header"><h1>Carico Rapido Documenti</h1><p>Proprietà Jacopo</p></div>', unsafe_allow_html=True)
+            
+            # Questo comando crea l'area dove trascinare i file
+            uploaded_files = st.file_uploader("Trascina qui i documenti o le foto dal tuo PC", accept_multiple_files=True)
+            
+            if not uploaded_files:
+                st.info("👋 Socio, trascina qui i file (PDF o immagini) che vuoi archiviare!")
             else:
-                st.error(f"❌ Errore: Il percorso `{path_scansioni}` non esiste.")
+                st.write(f"Hai selezionato **{len(uploaded_files)}** file da elaborare:")
+                
+                for uploaded_file in uploaded_files:
+                    # Usiamo il nome del file come chiave per non fare confusione
+                    with st.expander(f"📄 {uploaded_file.name}", expanded=True):
+                        col_view, col_actions = st.columns([1, 1])
+                        
+                        with col_view:
+                            # Se è una foto, la vediamo subito
+                            if uploaded_file.type.startswith('image/'):
+                                st.image(uploaded_file, use_container_width=True)
+                            else:
+                                st.caption("📎 Documento PDF/Altro (Anteprima non disponibile)")
+                        
+                        with col_actions:
+                            # Scegliamo la destinazione nella Proprietà
+                            st_scelta = st.selectbox("In quale stanza?", ["Seleziona..."] + stanze, key=f"st_{uploaded_file.name}")
+                            
+                            if st_scelta != "Seleziona...":
+                                sn_formattata = st_scelta.capitalize()
+                                res_art = sb.table("arredamento").select("id, articolo").eq("stanza", sn_formattata).execute()
+                                
+                                if res_art.data:
+                                    opzioni = {r['articolo']: r['id'] for r in res_art.data}
+                                    art_scelto = st.selectbox("Associa all'articolo:", [""] + list(opzioni.keys()), key=f"art_{uploaded_file.name}")
+                                    desc_doc = st.text_input("Descrizione (es: Fattura)", value=uploaded_file.name, key=f"desc_{uploaded_file.name}")
+                                    
+                                    if st.button("🚀 Archivia Documento", key=f"btn_{uploaded_file.name}"):
+                                        if art_scelto:
+                                            st.success(f"Socio, sono pronto! Appena colleghiamo il database, invierò '{uploaded_file.name}' a '{art_scelto}'")
+                                else:
+                                    st.warning("Non ci sono articoli in questa stanza.")
+
 # ... poi continuano gli altri elif per le stanze o il manuale ...
 
 
