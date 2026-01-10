@@ -548,18 +548,26 @@ else:
                     key=f"editor_{sn}"
                 )
 
+    # --- 1. IL "FRENO A MANO" DI SICUREZZA ---
+                st.write("---")
+                conferma_canc = st.checkbox("🔓 Autorizzo la cancellazione definitiva delle righe rimosse")
 
+                # --- 2. IL TASTO DI SALVATAGGIO ---
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     try:
-                        # --- NUOVA LOGICA CANCELLAZIONE REALE ---
+                        # Ora il codice controlla SE ci sono righe da eliminare
                         stato_editor = st.session_state.get(f"editor_{sn}")
                         if stato_editor and stato_editor.get("deleted_rows"):
-                            indici_da_eliminare = stato_editor["deleted_rows"]
-                            for idx in indici_da_eliminare:
-                                # Recuperiamo l'ID della riga dal dataframe originale (df_per_editor)
-                                id_da_cancellare = df_per_editor.iloc[idx].get('id')
-                                if id_da_cancellare and id_da_cancellare != 0:
-                                    sb.table("arredamento").delete().eq("id", id_da_cancellare).execute()
+                            # Se ci sono righe eliminate ma il check è vuoto... STOP!
+                            if not conferma_canc:
+                                st.error("⚠️ ATTENZIONE: Hai rimosso delle righe ma non hai spuntato la casella di autorizzazione. Le modifiche non sono state salvate per sicurezza.")
+                            else:
+                                # Procedi con la cancellazione reale su Supabase
+                                for idx in stato_editor["deleted_rows"]:
+                                    id_da_cancellare = df_per_editor.iloc[idx].get('id')
+                                    if id_da_cancellare and id_da_cancellare != 0:
+                                        sb.table("arredamento").delete().eq("id", id_da_cancellare).execute()
+                                st.success("Cancellazione della Proprietà eseguita con successo!")
 
                         # PuliAMO i dati: trasforma tutti i vuoti in 0 così i calcoli non falliscono
                         df_e = df_e.fillna(0) 
