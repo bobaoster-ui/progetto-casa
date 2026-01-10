@@ -22,6 +22,38 @@ def get_supabase():
 
 sb = get_supabase()
 
+# --- FUNZIONE DI ARCHIVIAZIONE REALE ---
+def upload_documento(file, articolo_id, descrizione):
+    try:
+        # 1. Prepariamo il percorso nel Bucket (organizzato per ID articolo)
+        file_path = f"art_{articolo_id}/{file.name}"
+        file_content = file.getvalue()
+
+        # 2. Carichiamo il file nel Bucket "documenti_proprieta"
+        sb.storage.from_("documenti_proprieta").upload(
+            file_path, 
+            file_content, 
+            {"content-type": file.type, "upsert": "true"}
+        )
+
+        # 3. Otteniamo l'URL pubblico (per poterlo vedere nelle stanze)
+        file_url = sb.storage.from_("documenti_proprieta").get_public_url(file_path)
+
+        # 4. Registriamo il documento nel database (tabella documenti_arredo)
+        nuovo_doc = {
+            "arredo_id": articolo_id,
+            "nome_file": file.name,
+            "url": file_url,
+            "descrizione": descrizione
+        }
+        sb.table("documenti_arredo").insert(nuovo_doc).execute()
+        return True
+    except Exception as e:
+        st.error(f"Errore tecnico durante l'upload: {e}")
+        return False
+
+# --- STILE (riga 25 originale diventa riga 50 circa) ---
+
 # --- STILE ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
 bc, cc, tc = ("#0e1117", "#1d2129", "#ffffff") if st.session_state.dark_mode else ("#f8f9fc", "#ffffff", "#1f2937")
@@ -298,7 +330,18 @@ else:
                                     
                                     if st.button("🚀 Archivia Documento", key=f"btn_{uploaded_file.name}"):
                                         if art_scelto:
-                                            st.success(f"Socio, sono pronto! Appena colleghiamo il database, invierò '{uploaded_file.name}' a '{art_scelto}'")
+                                            with st.spinner("Archiviazione nella Proprietà in corso..."):
+                                                # Recuperiamo l'ID dell'articolo scelto dal dizionario opzioni
+                                                id_articolo = opzioni[art_scelto]
+                                                
+                                                # Eseguiamo l'upload vero!
+                                                successo = upload_documento(uploaded_file, id_articolo, desc_doc)
+                                                
+                                                if successo:
+                                                    st.success(f"✅ '{uploaded_file.name}' archiviato con successo nella Proprietà Jacopo!")
+                                                    st.balloons()
+                                        else:
+                                            st.warning("Socio, devi prima selezionare un articolo!")
                                 else:
                                     st.warning("Non ci sono articoli in questa stanza.")
 
