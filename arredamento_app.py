@@ -126,38 +126,32 @@ else:
         st.sidebar.write(f"📁 Path: {path_scansioni}")
     # 3. IL PARACADUTE (BACKUP)
 
-    # --- LOGICA GENERAZIONE BACKUP EXCEL ---
-        st.sidebar.write("---")
-        st.sidebar.subheader("Amministrazione")
-        try:
-                # 1. Recupero dati da entrambe le tabelle
-                res_arredo = sb.table("arredamento").select("*").order("id").execute()
-                res_docs = sb.table("documenti_arredo").select("*").execute()
+# --- SEZIONE AMMINISTRAZIONE E BACKUP (Sempre visibile) ---
+st.sidebar.write("---")
+st.sidebar.subheader("⚙️ Amministrazione")
 
-                if res_arredo.data:
-                    import pandas as pd
-                    import io
-                    
-                    df_arredo = pd.DataFrame(res_arredo.data)
-                    df_docs = pd.DataFrame(res_docs.data)
+try:
+    # Recuperiamo i dati in modo rapido
+    res_a = sb.table("arredamento").select("*").order("id").execute()
+    res_d = sb.table("documenti_arredo").select("*").execute()
 
-                    # 2. Creazione del file Excel in memoria (con due fogli)
-                    output = io.BytesIO()
-                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                        df_arredo.to_excel(writer, sheet_name='Inventario Arredo', index=False)
-                        df_docs.to_excel(writer, sheet_name='Lista Documenti', index=False)
-                    
-                    # 3. IL TASTO DI DOWNLOAD (Ora sempre visibile e funzionante)
-                    st.sidebar.download_button(
-                        label="💾 SCARICA BACKUP EXCEL",
-                        data=output.getvalue(),
-                        file_name=f"Backup_Proprietà_Jacopo_{pd.Timestamp.now().strftime('%d_%m_%Y')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-        except Exception as e:
-            st.sidebar.error(f"Errore tecnico nel backup: {e}")
-
+    if res_a.data:
+        # Prepariamo l'Excel (Socio, qui c'è la tua "à" accentata nel nome file!)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            pd.DataFrame(res_a.data).to_excel(writer, sheet_name='Inventario Arredo', index=False)
+            pd.DataFrame(res_d.data).to_excel(writer, sheet_name='Lista Documenti', index=False)
+        
+        # IL TASTO REALE
+        st.sidebar.download_button(
+            label="💾 SCARICA BACKUP EXCEL",
+            data=output.getvalue(),
+            file_name=f"Backup_Proprietà_Jacopo_{pd.Timestamp.now().strftime('%d_%m_%Y')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+except Exception as e:
+    st.sidebar.warning("Backup momentaneamente non disponibile")
 
     st.markdown("---")
 
