@@ -125,36 +125,44 @@ else:
     # Conferma visiva nella sidebar (fuori dal try)
         st.sidebar.write(f"📁 Path: {path_scansioni}")
     # 3. IL PARACADUTE (BACKUP)
-# --- SEZIONE AMMINISTRAZIONE E BACKUP (Sempre visibile) ---
-st.sidebar.write("---")
-st.sidebar.subheader("⚙️ Amministrazione")
-try:
-    # Recuperiamo i dati in modo rapido
-    res_a = sb.table("arredamento").select("*").order("id").execute()
-    res_d = sb.table("documenti_arredo").select("*").execute()
 
-    if res_a.data:
-        # Prepariamo l'Excel (Socio, qui c'è la tua "à" accentata nel nome file!)
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            pd.DataFrame(res_a.data).to_excel(writer, sheet_name='Inventario Arredo', index=False)
-            pd.DataFrame(res_d.data).to_excel(writer, sheet_name='Lista Documenti', index=False)
-        
-        # IL TASTO REALE
-        st.sidebar.download_button(
-            label="💾 SCARICA BACKUP EXCEL",
-            data=output.getvalue(),
-            file_name=f"Backup_Proprietà_Jacopo_{pd.Timestamp.now().strftime('%d_%m_%Y')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-except Exception as e:
-    st.sidebar.warning("Backup momentaneamente non disponibile")
+    # --- LOGICA GENERAZIONE BACKUP ---
+        if st.sidebar.button("📊 GENERA BACKUP TOTALE"):
+            try:
+                # 1. Recupero dati da Supabase
+                # Questa è la "legge" per la Proprietà Jacopo: ordine assoluto per ID
+                res_arredo = sb.table("arredamento").select("*").order("id").execute()
+                res_docs = sb.table("documenti_arredo").select("*").execute()
+
+                df_arredo = pd.DataFrame(res_arredo.data)
+                # Forza l'ordinamento numerico per ID nel DataFrame di Python
+                df_arredo = df_arredo.sort_values(by="id", ascending=True).reset_index(drop=True)
+                df_docs = pd.DataFrame(res_docs.data)
+
+                # 2. Creazione file Excel in memoria
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    df_arredo.to_excel(writer, sheet_name='Inventario Arredo', index=False)
+                    df_docs.to_excel(writer, sheet_name='Lista Documenti', index=False)
+
+                # 3. Tasto per il download effettivo
+                st.sidebar.download_button(
+                    label="💾 Scarica Excel Proprietà",
+                    data=output.getvalue(),
+                    file_name=f"Backup_Proprieta_Jacopo_{datetime.now().strftime('%d_%m_%Y_%H_%M')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                st.sidebar.success("Excel generato! Clicca sopra per scaricare.")
+
+            except Exception as e:
+                st.sidebar.error(f"Errore backup: {e}")
+
+
     st.markdown("---")
 
-if st.sidebar.button("Logout 🚪"): # Ho aggiunto .sidebar qui così il tasto resta a sinistra!
-    st.session_state.clear()
-    st.rerun()
+    if st.sidebar.button("Logout 🚪"): # Ho aggiunto .sidebar qui così il tasto resta a sinistra!
+        st.session_state.clear()
+        st.rerun()
 
     # --- LOGICA DELLE PAGINE ---
 
