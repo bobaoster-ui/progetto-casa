@@ -126,11 +126,23 @@ else:
     if sel == "🏠 Riepilogo":
         st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
         # --- RECUPERO BUDGET DINAMICO ---
-        res_settings = sb.table("impostazioni").select("*").eq("chiave", "budget_totale").execute()
-        if res_settings.data:
-            bud = float(res_settings.data[0]['valore_num'])
-        else:
-            bud = 15000.0  # Paracadute se la tabella è vuota
+        try:
+            res_settings = sb.table("impostazioni").select("*").execute()
+            # Trasformiamo la lista in un dizionario comodo: {'chiave': 'valore'}
+            conf = {r['chiave']: r for r in res_settings.data}
+            
+            # 1. Budget (Valore Numerico)
+            bud = float(conf.get('budget_totale', {}).get('valore_num', 15000.0))
+            
+            # 2. Percorso Scansioni (Valore Testuale)
+            path_scansioni = conf.get('path_scansioni', {}).get('valore_txt', '/home/roberto/Documenti/ScansioniApp')
+        except Exception as e:
+            st.error(f"Errore caricamento impostazioni: {e}")
+            bud = 15000.0
+            path_scansioni = "/home/roberto/Documenti/ScansioniApp"
+        
+        st.sidebar.write(f"📁 Path: {path_scansioni}") # <-- METTILA QUI!
+
         # 1. RECUPERO DATI GLOBALI
         res_tutto = sb.table("arredamento").select("*").execute()
         df_tutto = pd.DataFrame(res_tutto.data)
