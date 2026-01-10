@@ -125,7 +125,12 @@ else:
 
     if sel == "🏠 Riepilogo":
         st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
-        bud = 15000.0
+        # --- RECUPERO BUDGET DINAMICO ---
+        res_settings = sb.table("impostazioni").select("*").eq("chiave", "budget_totale").execute()
+        if res_settings.data:
+            bud = float(res_settings.data[0]['valore_num'])
+        else:
+            bud = 15000.0  # Paracadute se la tabella è vuota
         # 1. RECUPERO DATI GLOBALI
         res_tutto = sb.table("arredamento").select("*").execute()
         df_tutto = pd.DataFrame(res_tutto.data)
