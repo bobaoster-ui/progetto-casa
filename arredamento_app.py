@@ -126,12 +126,10 @@ else:
         st.sidebar.write(f"📁 Path: {path_scansioni}")
     # 3. IL PARACADUTE (BACKUP)
 
-if st.session_state.get("authenticated"): # <--- Questa è la chiave!
-
+if st.session_state.get("authenticated") or st.session_state.get("logged_in"):
     # --- SEZIONE AMMINISTRAZIONE E BACKUP (Sempre visibile) ---
     st.sidebar.write("---")
     st.sidebar.subheader("⚙️ Amministrazione")
-
     try:
         # Recuperiamo i dati in modo rapido
         res_a = sb.table("arredamento").select("*").order("id").execute()
@@ -154,7 +152,6 @@ if st.session_state.get("authenticated"): # <--- Questa è la chiave!
             )
     except Exception as e:
         st.sidebar.warning("Backup momentaneamente non disponibile")
-
         st.markdown("---")
 
     if st.sidebar.button("Logout 🚪"): # Ho aggiunto .sidebar qui così il tasto resta a sinistra!
