@@ -7,6 +7,7 @@ from fpdf import FPDF
 import time
 import requests
 import io  # <--- AGGIUNGI SOLO QUESTO
+import os
 
 # --- SICUREZZA ---
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
@@ -74,8 +75,8 @@ else:
         st.session_state.dark_mode = st.toggle("🌙 Notte", st.session_state.dark_mode)
 
         # 1. MENU DI NAVIGAZIONE
-        sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze] + ["📖 Manuale"])
-
+#        sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze] + ["📖 Manuale"])
+        sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist", "📥 Carico Rapido"] + [f"📦 {s.capitalize()}" for s in stanze] + ["📖 Manuale"])
         # 2. MODIFICA STRUTTURA
         edit_struct = st.toggle("⚙️ Modifica Struttura", False)
 
@@ -263,6 +264,57 @@ else:
                 st.warning("⚠️ Non riesco a leggere il file manuale.md su GitHub. Controlla il link o che il file sia pubblico.")
         except:
             st.error("❌ Errore di connessione a GitHub per il Manuale.")
+
+
+    elif sel == "📥 Carico Rapido":
+        st.markdown(f'<div class="main-header"><h1>Carico Rapido Documenti</h1><p>Cartella: {path_scansioni}</p></div>', unsafe_allow_html=True)
+
+        # 1. Controllo se la cartella esiste
+        if os.path.exists(path_scansioni):
+            files = [f for f in os.listdir(path_scansioni) if os.path.isfile(os.path.join(path_scansioni, f))]
+            
+            if not files:
+                st.info("✨ La cartella è pulita! Nessun nuovo file da processare.")
+                if st.button("Aggiorna 🔄"): st.rerun()
+            else:
+                st.write(f"Trovati **{len(files)}** file pronti per l'archiviazione:")
+                
+                for file_name in files:
+                    # Creiamo un box per ogni file trovato
+                    with st.expander(f"📄 {file_name}", expanded=True):
+                        col_view, col_actions = st.columns([1, 1])
+                        full_path = os.path.join(path_scansioni, file_name)
+                        
+                        with col_view:
+                            if file_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                                st.image(full_path, use_container_width=True)
+                            else:
+                                st.caption("📎 File PDF o Documento (anteprima non disponibile)")
+                        
+                        with col_actions:
+                            # Qui scegliamo dove mandarlo
+                            st_scelta = st.selectbox("A quale stanza appartiene?", ["Seleziona..."] + stanze, key=f"st_{file_name}")
+                            
+                            if st_scelta != "Seleziona...":
+                                sn_formattata = st_scelta.capitalize()
+                                # Recuperiamo gli articoli dal DB per quella stanza
+                                res_art = sb.table("arredamento").select("id, articolo").eq("stanza", sn_formattata).execute()
+                                
+                                if res_art.data:
+                                    opzioni = {r['articolo']: r['id'] for r in res_art.data}
+                                    art_scelto = st.selectbox("Associa all'articolo:", [""] + list(opzioni.keys()), key=f"art_{file_name}")
+                                    desc_doc = st.text_input("Descrizione (es: Fattura)", value=file_name, key=f"desc_{file_name}")
+                                    
+                                    if st.button("🚀 Archivia nella Proprietà", key=f"btn_{file_name}"):
+                                        if art_scelto:
+                                            st.success(f"Socio, sono pronto! Appena scriviamo la funzione di upload, manderò '{file_name}' a '{art_scelto}'")
+                                else:
+                                    st.warning("Nessun articolo trovato in questa stanza.")
+        else:
+            st.error(f"❌ Errore: Il percorso `{path_scansioni}` non esiste su questo PC.")
+
+# ... poi continuano gli altri elif per le stanze o il manuale ...
+
 
     elif "📦" in sel or "✨" in sel:
         is_wish = "✨" in sel
