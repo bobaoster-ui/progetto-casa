@@ -25,33 +25,32 @@ sb = get_supabase()
 # --- FUNZIONE DI ARCHIVIAZIONE REALE ---
 def upload_documento(file, articolo_id, descrizione):
     try:
-        # 1. Prepariamo il percorso nel Bucket (organizzato per ID articolo)
-        file_path = f"art_{articolo_id}/{file.name}"
+        # 1. Percorso file nel Bucket (senza prefisso 'art_', solo l'ID come i vecchi)
+        file_path = f"{articolo_id}/{file.name}"
         file_content = file.getvalue()
 
-        # 2. Carichiamo il file nel Bucket "documenti_proprieta"
+        # 2. Caricamento nel Bucket "documenti_proprieta"
         sb.storage.from_("documenti_proprieta").upload(
             file_path, 
             file_content, 
             {"content-type": file.type, "upsert": "true"}
         )
 
-        # 3. Otteniamo l'URL pubblico (per poterlo vedere nelle stanze)
+        # 3. URL pubblico del file
         file_url = sb.storage.from_("documenti_proprieta").get_public_url(file_path)
 
-        # 4. Registriamo il documento nel database (tabella documenti_arredo)
+        # 4. Registrazione nel DB (mappata sul tuo schema SQL reale)
         nuovo_doc = {
-            "arredo_id": articolo_id,
-            "nome_file": file.name,
-            "url": file_url,
-            "descrizione": descrizione
+            "parent_id": articolo_id,      # Era arredo_id
+            "nome_documento": file.name,   # Era nome_file
+            "link_file": file_url,         # Era url
+            "nota": descrizione            # Era descrizione
         }
         sb.table("documenti_arredo").insert(nuovo_doc).execute()
         return True
     except Exception as e:
         st.error(f"Errore tecnico durante l'upload: {e}")
         return False
-
 # --- STILE (riga 25 originale diventa riga 50 circa) ---
 
 # --- STILE ---
@@ -114,7 +113,6 @@ else:
 
         st.markdown("<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
 
-        st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
         # --- RECUPERO BUDGET DINAMICO ---
     try:
         res_settings = sb.table("impostazioni").select("*").execute()
@@ -170,7 +168,7 @@ else:
 
     if sel == "🏠 Riepilogo":
 
-
+        st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà Jacopo</p></div>', unsafe_allow_html=True)
         # 1. RECUPERO DATI GLOBALI
         res_tutto = sb.table("arredamento").select("*").execute()
         df_tutto = pd.DataFrame(res_tutto.data)
