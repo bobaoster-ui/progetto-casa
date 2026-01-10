@@ -88,7 +88,7 @@ else:
             try:
                 # 1. Recupero dati da Supabase
                 # Questa è la "legge" per la Proprietà Jacopo: ordine assoluto per ID
-                res_arredo = sb.table("arredamento").select("*").order("id", ascending=True).execute()
+                res_arredo = sb.table("arredamento").select("*").eq("stanza", sn).order("id").execute()
                 res_docs = sb.table("documenti_arredo").select("*").execute()
 
                 df_arredo = pd.DataFrame(res_arredo.data)
@@ -456,6 +456,16 @@ else:
 
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     try:
+                        # --- NUOVA LOGICA CANCELLAZIONE REALE ---
+                        stato_editor = st.session_state.get(f"editor_{sn}")
+                        if stato_editor and stato_editor.get("deleted_rows"):
+                            indici_da_eliminare = stato_editor["deleted_rows"]
+                            for idx in indici_da_eliminare:
+                                # Recuperiamo l'ID della riga dal dataframe originale (df_per_editor)
+                                id_da_cancellare = df_per_editor.iloc[idx].get('id')
+                                if id_da_cancellare and id_da_cancellare != 0:
+                                    sb.table("arredamento").delete().eq("id", id_da_cancellare).execute()
+
                         # PuliAMO i dati: trasforma tutti i vuoti in 0 così i calcoli non falliscono
                         df_e = df_e.fillna(0) 
                         df_e['Acquista S/N'] = df_e['Acquista S/N'].replace(0, 'N')                        
