@@ -256,7 +256,10 @@ else:
 
         res = sb.table("arredamento").select("*").eq("stanza", sn).execute()
         df = clean_df(pd.DataFrame(res.data))
-        
+        # --- AGGIUNGI QUESTE RIGHE QUI SOTTO ---
+        if not df.empty:
+            df = df.sort_values(by="id", ascending=True).reset_index(drop=True)
+        # ---------------------------------------        
         
         if not df.empty:
             is_closed = any(df['Stanza Chiusa'] == True)
