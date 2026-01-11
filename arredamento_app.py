@@ -99,9 +99,22 @@ if "password_correct" not in st.session_state:
 else:
     stanze = ["camera", "cucina", "salotto", "tavolo", "lavori"]
 
+    try:
+        res_settings = sb.table("impostazioni").select("*").execute()
+        conf = {r['chiave']: r for r in res_settings.data}
+        bud = float(conf.get('budget_totale', {}).get('valore_num', 15000.0))
+        path_scansioni = conf.get('path_scansioni', {}).get('valore_txt', '/home/roberto/Documenti/ScansioniApp')
+        # Recuperiamo il nome del proprietario (default 'Jacopo' se non trovato)
+        nome_prop = conf.get('Proprietà', {}).get('valore_txt', 'Jacopo')        
+    except Exception as e:
+        bud = 15000.0
+        path_scansioni = "/home/roberto/Documenti/ScansioniApp"
     with st.sidebar:
         try: st.image("logo.png", use_container_width=True)
         except: pass
+
+        # 3. TITOLO DINAMICO (Qui va la riga!)
+        st.title(f"Gestione Arredamento - {nome_prop}")
 
         st.session_state.dark_mode = st.toggle("🌙 Notte", st.session_state.dark_mode)
 
@@ -111,17 +124,10 @@ else:
         # 2. MODIFICA STRUTTURA
         edit_struct = st.toggle("⚙️ Modifica Struttura", False)
 
-        st.markdown("<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: Jacopo</small>", unsafe_allow_html=True)
+        st.markdown("<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: {nome_prop}</small>", unsafe_allow_html=True)
 
         # --- RECUPERO BUDGET DINAMICO ---
-    try:
-        res_settings = sb.table("impostazioni").select("*").execute()
-        conf = {r['chiave']: r for r in res_settings.data}
-        bud = float(conf.get('budget_totale', {}).get('valore_num', 15000.0))
-        path_scansioni = conf.get('path_scansioni', {}).get('valore_txt', '/home/roberto/Documenti/ScansioniApp')
-    except Exception as e:
-        bud = 15000.0
-        path_scansioni = "/home/roberto/Documenti/ScansioniApp"
+
     # Conferma visiva nella sidebar (fuori dal try)
         st.sidebar.write(f"📁 Path: {path_scansioni}")
     # 3. IL PARACADUTE (BACKUP)
@@ -282,7 +288,8 @@ else:
                     # --- TOTALI (Anche questi a destra per coerenza) ---
                     p.ln(2); p.set_font('Arial','B',10); p.set_fill_color(220,220,220)
                     t_i = df_r['Importo Totale'].sum(); t_v = df_r['Versato'].sum()
-                    p.cell(120,10,'TOTALE GENERALE PROPRIETÀ',1,0,'R',1)
+                    # Nel calcolo dei totali in fondo al PDF
+                    p.cell(120, 10, f'TOTALE GENERALE PROPRIETÀ {nome_prop.upper()}', 1, 0, 'R', 1)
                     p.cell(35,10,f"{t_i:,.2f} ",1,0,'R',1)
                     p.cell(35,10,f"{t_v:,.2f} ",1,1,'R',1)
                     st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
