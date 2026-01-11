@@ -547,28 +547,29 @@ else:
                     column_order=colonne_visibili, # L'id c'è nel DF ma non viene disegnato
                     key=f"editor_{sn}"
                 )
-
-    # --- 1. IL "FRENO A MANO" DI SICUREZZA ---
+# --- 1. IL "FRENO A MANO" DI SICUREZZA ---
                 st.write("---")
                 conferma_canc = st.checkbox("🔓 Autorizzo la cancellazione definitiva delle righe rimosse")
-
-                # --- 2. IL TASTO DI SALVATAGGIO ---
                 if st.form_submit_button("💾 SALVA TUTTO"):
                     try:
-                        # Ora il codice controlla SE ci sono righe da eliminare
                         stato_editor = st.session_state.get(f"editor_{sn}")
+                        
                         if stato_editor and stato_editor.get("deleted_rows"):
-                            # Se ci sono righe eliminate ma il check è vuoto... STOP!
+                            # SE MANCA IL CHECK: Messaggio persistente e blocco ricaricamento
                             if not conferma_canc:
-                                st.error("⚠️ ATTENZIONE: Hai rimosso delle righe ma non hai spuntato la casella di autorizzazione. Le modifiche non sono state salvate per sicurezza.")
+                                st.error("⚠️ ATTENZIONE: Hai rimosso delle righe ma NON hai autorizzato la cancellazione. Per sicurezza i dati NON sono stati toccati. Spunta la casella 'Autorizzo...' e premi Salva, oppure cambia stanza per annullare.")
+                                st.info("💡 Suggerimento: Se volevi solo nasconderle, ricorda che la cancellazione è definitiva.")
+                                st.stop()  # <--- QUESTO blocca tutto e tiene il messaggio a video!
+                            
+                            # SE IL CHECK C'È: Messaggio di avvertimento definitivo
                             else:
-                                # Procedi con la cancellazione reale su Supabase
+                                st.warning("❗ CANCELLAZIONE DEFINITIVA IN CORSO...")
+                                # Qui il codice procede a cancellare...
                                 for idx in stato_editor["deleted_rows"]:
                                     id_da_cancellare = df_per_editor.iloc[idx].get('id')
                                     if id_da_cancellare and id_da_cancellare != 0:
                                         sb.table("arredamento").delete().eq("id", id_da_cancellare).execute()
-                                st.success("Cancellazione della Proprietà eseguita con successo!")
-
+                                st.success("✅ Record eliminati definitivamente dalla Proprietà.")
                         # PuliAMO i dati: trasforma tutti i vuoti in 0 così i calcoli non falliscono
                         df_e = df_e.fillna(0) 
                         df_e['Acquista S/N'] = df_e['Acquista S/N'].replace(0, 'N')                        
