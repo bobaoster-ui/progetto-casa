@@ -248,20 +248,43 @@ else:
 
                 if st.button("📄 PDF"):
                     p = PDF(); p.add_page(); p.set_font('Arial','B',10); p.set_fill_color(46,117,182); p.set_text_color(255,255,255)
-                    p.cell(30,10,'Stanza',1,0,'C',1); p.cell(90,10,'Articolo',1,0,'C',1); p.cell(35,10,'Totale',1,0,'C',1); p.cell(35,10,'Versato',1,1,'C',1)
+                    # --- INTESTAZIONE (Allineamento al centro per i titoli) ---
+                    p.cell(30,10,'Stanza',1,0,'C',1)
+                    p.cell(75,10,'Articolo',1,0,'C',1)
+                    p.cell(15,10,'OMG',1,0,'C',1)
+                    p.cell(35,10,'Totale',1,0,'C',1)
+                    p.cell(35,10,'Versato',1,1,'C',1)
+                    
                     p.set_font('Arial','',9); p.set_text_color(0,0,0)
                     for _, r in df_r.iterrows():
-                        y=p.get_y(); p.set_xy(40,y); p.multi_cell(90,10,str(r['DV']).encode('latin-1','replace').decode('latin-1'),1); h=max(p.get_y()-y,10)
-                        p.set_xy(10,y); p.cell(30,h,str(r['stanza']),1); p.set_xy(130,y); p.cell(35,h,f"{r['Importo Totale']:,.2f}",1); p.cell(35,h,f"{r['Versato']:,.2f}",1,1)
+                        reg_val = "S" if r.get('Sconto %', 0) == 100 else ""
+                        
+                        y=p.get_y()
+                        # Articolo
+                        p.set_xy(40,y)
+                        p.multi_cell(75,10,str(r['DV']).encode('latin-1','replace').decode('latin-1'),1)
+                        h=max(p.get_y()-y,10)
+                        
+                        # Stanza
+                        p.set_xy(10,y)
+                        p.cell(30,h,str(r['stanza']),1,0,'C')
+                        
+                        # OMG
+                        p.set_xy(115,y)
+                        p.cell(15,h,reg_val,1,0,'C')
+                        
+                        # --- IMPORTI ALLINEATI A DESTRA ('R') ---
+                        p.set_xy(130,y)
+                        p.cell(35,h,f"{r['Importo Totale']:,.2f} ",1,0,'R') # Spazio dopo il numero per distanziarlo dal bordo
+                        p.set_xy(165,y)
+                        p.cell(35,h,f"{r['Versato']:,.2f} ",1,1,'R')
 
-                    # --- AGGIUNTA TOTALI (INSERISCI DA QUI) ---
+                    # --- TOTALI (Anche questi a destra per coerenza) ---
                     p.ln(2); p.set_font('Arial','B',10); p.set_fill_color(220,220,220)
                     t_i = df_r['Importo Totale'].sum(); t_v = df_r['Versato'].sum()
                     p.cell(120,10,'TOTALE GENERALE PROPRIETÀ',1,0,'R',1)
-                    p.cell(35,10,f"{t_i:,.2f}",1,0,'C',1)
-                    p.cell(35,10,f"{t_v:,.2f}",1,1,'C',1)
-                    # --- FINE AGGIUNTA ---
-
+                    p.cell(35,10,f"{t_i:,.2f} ",1,0,'R',1)
+                    p.cell(35,10,f"{t_v:,.2f} ",1,1,'R',1)
                     st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
 
             # --- 1. CREIAMO LA COLONNA OMAGGIO NEL DATAFRAME ---
