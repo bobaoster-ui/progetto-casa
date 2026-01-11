@@ -264,8 +264,17 @@ else:
 
                     st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
 
+            # --- 1. CREIAMO LA COLONNA OMAGGIO NEL DATAFRAME ---
+            # Nota: usiamo 'Sconto %' perché è il nome tecnico nella tua tabella Supabase
+            df_r['Omaggio'] = df_r['sconto_perc'].apply(lambda x: "🎁 S" if x == 100 else "")
+            # --- 2. AGGIUNGIAMO 'Omaggio' NELLA LISTA DELLE COLONNE DA MOSTRARE ---
+            c_t.dataframe(
+                df_r[['stanza', 'DV', 'Omaggio', 'Importo Totale', 'Versato']], 
+                use_container_width=True, 
+                hide_index=True
+            )
 
-            c_t.dataframe(df_r[['stanza','DV','Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
+#            c_t.dataframe(df_r[['stanza','DV','Importo Totale', 'Versato']], use_container_width=True, hide_index=True)
 
     elif sel == "📖 Manuale":
         st.markdown('<div class="main-header"><h1>Manuale d\'Uso</h1><p>Proprietà: Jacopo</p></div>', unsafe_allow_html=True)
