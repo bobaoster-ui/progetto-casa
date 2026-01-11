@@ -268,8 +268,10 @@ else:
             # Nota: usiamo 'Sconto %' perché è il nome tecnico nella tua tabella Supabase
             # 1. Creiamo la colonna Omaggio in modo sicuro
             # Usiamo axis=1 per controllare riga per riga
+            # --- 1. CREIAMO LA COLONNA OMAGGIO NEL DATAFRAME ---
+            # Usiamo 'Sconto %' perché è così che clean_df rinomina 'sconto_perc'
             df_r['Omaggio'] = df_r.apply(
-                lambda row: "🎁 S" if row.get('sconto_perc', 0) == 100 else "", 
+                lambda row: "🎁 S" if row.get('Sconto %', 0) == 100 else "", 
                 axis=1
             )
             # --- 2. AGGIUNGIAMO 'Omaggio' NELLA LISTA DELLE COLONNE DA MOSTRARE ---
