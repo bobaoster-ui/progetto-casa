@@ -124,8 +124,7 @@ else:
         # 2. MODIFICA STRUTTURA
         edit_struct = st.toggle("⚙️ Modifica Struttura", False)
 
-        st.markdown("<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: {nome_prop}</small>", unsafe_allow_html=True)
-
+        st.markdown(f"<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: {nome_prop}</small>", unsafe_allow_html=True)
         # --- RECUPERO BUDGET DINAMICO ---
 
     # Conferma visiva nella sidebar (fuori dal try)
