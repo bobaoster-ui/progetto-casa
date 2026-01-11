@@ -393,6 +393,8 @@ else:
 
                 st.write("---")
                 st.subheader("📄 Documenti già presenti:")
+                # --- AGGIUNTA: IL FRENO A MANO (Sotto il titolo) ---
+                conferma_canc_doc = st.checkbox("🔓 Autorizzo la cancellazione definitiva dei file", key=f"check_del_doc_{sn}")
                 # 1. Recupero dati
                 docs = sb.table("documenti_arredo").select("*").eq("parent_id", id_parent).execute()
 
@@ -431,20 +433,27 @@ else:
 
                         with c3:
                             # Bottone "invisibile" che sembra testo
+                            # --- MODIFICA: LOGICA DI CONTROLLO ---
                             if st.button("🗑️ Canc", key=f"del_{d['id']}", help="Elimina documento"):
-                                try:
-                                    sb.table("documenti_arredo").delete().eq("id", d['id']).execute()
-                                    path_to_remove = d['link_file'].split('/')[-1]
-                                    full_path = f"{id_parent}/{path_to_remove}"
-                                    sb.storage.from_("documenti_proprieta").remove([full_path])
-                                    st.toast("Rimosso!")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Errore: {e}")
+                                # CONTROLLO SICUREZZA
+                                if not conferma_canc_doc:
+                                    st.error("⚠️ Spunta la casella sopra per autorizzare!")
+                                    st.stop() # Blocca e tiene il messaggio a video
+                                else:
+                                    try:
+                                        # Eliminazione Database
+                                        sb.table("documenti_arredo").delete().eq("id", d['id']).execute()
+                                        
+                                        # Eliminazione Storage (Ottimo che l'avevi già prevista!)
+                                        path_to_remove = d['link_file'].split('/')[-1]
+                                        full_path = f"{id_parent}/{path_to_remove}"
+                                        sb.storage.from_("documenti_proprieta").remove([full_path])
+                                        
+                                        st.success("Rimosso!") # Successo invece di toast per visibilità
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Errore: {e}")
                     st.write("---")
-
-
-
                 else:
                     st.info("Nessun documento caricato.")
 
