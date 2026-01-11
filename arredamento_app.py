@@ -266,7 +266,12 @@ else:
 
             # --- 1. CREIAMO LA COLONNA OMAGGIO NEL DATAFRAME ---
             # Nota: usiamo 'Sconto %' perché è il nome tecnico nella tua tabella Supabase
-            df_r['Omaggio'] = df_r['sconto_perc'].apply(lambda x: "🎁 S" if x == 100 else "")
+            # 1. Creiamo la colonna Omaggio in modo sicuro
+            # Usiamo axis=1 per controllare riga per riga
+            df_r['Omaggio'] = df_r.apply(
+                lambda row: "🎁 S" if row.get('sconto_perc', 0) == 100 else "", 
+                axis=1
+            )
             # --- 2. AGGIUNGIAMO 'Omaggio' NELLA LISTA DELLE COLONNE DA MOSTRARE ---
             c_t.dataframe(
                 df_r[['stanza', 'DV', 'Omaggio', 'Importo Totale', 'Versato']], 
