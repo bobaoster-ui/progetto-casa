@@ -681,9 +681,10 @@ else:
 
                 # Sostituiamo st.text_area con st_quill
                 # Usiamo 'html=True' per salvare i grassetti e le liste
+
+
                 nt = st_quill(
                     value=st.session_state[nt_key], 
-                    height=200, # Un po' più alto così si lavora bene
                     html=True, 
                     key=f"quill_note_{sn}_{idx_n}" # Chiave dinamica basata sull'indice per resettarsi al cambio articolo
                 )
