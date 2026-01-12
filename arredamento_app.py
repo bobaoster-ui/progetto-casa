@@ -53,6 +53,56 @@ def upload_documento(file, articolo_id, descrizione):
         return False
 # --- STILE (riga 25 originale diventa riga 50 circa) ---
 
+
+def genera_pdf_riepilogo(nome_ordine, df_f, tot, pagato, residuo):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Titolo
+    pdf.set_font("Arial", "B", 20)
+    pdf.set_text_color(46, 90, 136)
+    pdf.cell(0, 15, f"Riepilogo Ordine: {nome_ordine}", ln=True, align="C")
+    
+    pdf.set_font("Arial", "", 10)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(0, 10, f"Generato il: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
+    pdf.ln(10)
+
+    # Box Sintesi Economica
+    pdf.set_fill_color(240, 240, 240)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(60, 10, "Totale Impegnato", 1, 0, "C", True)
+    pdf.cell(60, 10, "Totale Pagato", 1, 0, "C", True)
+    pdf.cell(70, 10, "Residuo da Saldare", 1, 1, "C", True)
+    
+    pdf.set_font("Arial", "", 12)
+    pdf.cell(60, 10, f"Euro {tot:,.2f}", 1, 0, "C")
+    pdf.cell(60, 10, f"Euro {pagato:,.2f}", 1, 0, "C")
+    pdf.set_text_color(200, 0, 0) if residuo > 0 else pdf.set_text_color(0, 150, 0)
+    pdf.cell(70, 10, f"Euro {residuo:,.2f}", 1, 1, "C")
+    
+    pdf.ln(10)
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(0, 10, "Dettaglio Movimenti:", ln=True)
+
+    # Tabella Movimenti
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(30, 8, "Data", 1, 0, "C", True)
+    pdf.cell(30, 8, "Tipo", 1, 0, "C", True)
+    pdf.cell(90, 8, "Descrizione", 1, 0, "C", True)
+    pdf.cell(40, 8, "Importo", 1, 1, "C", True)
+
+    pdf.set_font("Arial", "", 9)
+    for _, row in df_f.iterrows():
+        imp = row['dare'] if row['tipo'] == 'Ordine' else row['avere']
+        pdf.cell(30, 8, str(row['data_movimento']), 1, 0, "C")
+        pdf.cell(30, 8, row['tipo'], 1, 0, "C")
+        pdf.cell(90, 8, str(row['descrizione'])[:50], 1, 0, "L")
+        pdf.cell(40, 8, f"Euro {imp:,.2f}", 1, 1, "R")
+    
+    return pdf.output()
+
 # --- STILE ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
 bc, cc, tc = ("#0e1117", "#1d2129", "#ffffff") if st.session_state.dark_mode else ("#f8f9fc", "#ffffff", "#1f2937")
@@ -290,6 +340,25 @@ else:
                         <h2 style="margin:0; color: {color_res};">€ {residuo_singolo:,.2f}</h2>
                     </div>
                 """, unsafe_allow_html=True)
+                # --- QUI AGGIUNGI IL GENERATORE E IL TASTO ---
+                try:
+                    pdf_output = genera_pdf_riepilogo(
+                        ordine_selezionato, 
+                        df_visualizza, 
+                        tot_ordine, 
+                        tot_pagato, 
+                        residuo_singolo
+                    )
+                    
+                    st.download_button(
+                        label="📄 Scarica Riepilogo PDF",
+                        data=bytes(pdf_output),
+                        file_name=f"Riepilogo_{ordine_selezionato}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                except Exception as e:
+                    st.error(f"Errore generazione PDF: {e}")
 
         # --- 3. VISUALIZZAZIONE LISTA (Usa df_visualizza invece di df_cont) ---
         st.write(f"### 📜 Elenco Movimenti: {ordine_selezionato}")            
