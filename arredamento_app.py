@@ -194,30 +194,31 @@ else:
                 c1, c2, c3 = st.columns([1, 1, 1])
                 
                 with c1:
+                    # TIPO E DATA
                     t_mov = st.selectbox("Tipo Movimento", ["Ordine", "Pagamento"])
                     d_mov = st.date_input("Data", datetime.now())
                 
                 with c2:
+                    # IMPORTO E LOGICA DINAMICA (Senza duplicati!)
                     importo = st.number_input("Importo (€)", min_value=0.0, step=10.0)
                     
-                    # --- LA MAGIA DINAMICA ---
                     if t_mov == "Ordine":
                         scelta = st.radio("L'ordine è:", ["Nuovo", "Esistente"], horizontal=True)
                         if scelta == "Nuovo":
                             ogg = st.text_input("Nome Nuovo Ordine", placeholder="es. Cucina Lube")
                         else:
-                            ogg = st.selectbox("Seleziona Ordine", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], key="sel_ord")
+                            # QUI appare la lista se scegli Ordine -> Esistente
+                            ogg = st.selectbox("Seleziona Ordine", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"])
                     else:
-                        # Se è pagamento, DEVE scegliere un ordine esistente
-                        ogg = st.selectbox("Riferito a:", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], key="sel_pag")                
+                        # QUI appare la lista se scegli Pagamento
+                        ogg = st.selectbox("Riferito a:", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"])
+                
                 with c3:
+                    # NOTA E FILE
                     descr = st.text_input("Nota", placeholder="es. Acconto 30%")
                     f_doc = st.file_uploader("Documento PDF/IMG", type=['pdf', 'jpg', 'png'])
 
-                # Bottone di invio
-                # Bottone di invio (Indentato dentro il form)
-                submit = st.form_submit_button("🚀 Memorizza Movimento")
-                
+                submit = st.form_submit_button("🚀 Memorizza Movimento")                
                 if submit:
                     if not ogg or ogg == "Nessun ordine trovato":
                         st.warning("⚠️ Per favore, specifica a quale oggetto o ordine si riferisce il movimento!")
