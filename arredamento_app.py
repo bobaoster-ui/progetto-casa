@@ -8,6 +8,7 @@ import time
 import requests
 import io  # <--- AGGIUNGI SOLO QUESTO
 import os
+from streamlit_quill import st_quill
 
 # --- SICUREZZA ---
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
@@ -664,22 +665,35 @@ else:
             c1.markdown(f'<div class="metric-card">TOTALE STANZA<div class="metric-value">{t_imp:,.2f}€</div></div>', unsafe_allow_html=True)
             c2.markdown(f'<div class="metric-card">PAGATO STANZA<div class="metric-value">{t_ver:,.2f}€</div></div>', unsafe_allow_html=True)
 
-# --- 1. SEZIONE NOTE ---
+# --- 1. SEZIONE NOTE (Versione PRO) ---
             with st.expander("📝 NOTE"):
                 # Selettore specifico per le note
                 art_per_nota = st.selectbox("Seleziona Articolo per la nota:", df['DV'].tolist(), key=f"sel_nota_{sn}")
                 idx_n = df[df['DV'] == art_per_nota].index[0]
 
                 nt_key = f"note_val_{sn}_{idx_n}"
-                if nt_key not in st.session_state:
-                    st.session_state[nt_key] = str(df.at[idx_n, 'Note'])
+                
+                # Recuperiamo la nota (se è NaN o nulla, mettiamo stringa vuota)
+                nota_corrente = str(df.at[idx_n, 'Note']) if pd.notnull(df.at[idx_n, 'Note']) else ""
 
-                nt = st.text_area("Nota:", value=st.session_state[nt_key], height=100, key=f"area_note_{sn}")
+                if nt_key not in st.session_state:
+                    st.session_state[nt_key] = nota_corrente
+
+                # Sostituiamo st.text_area con st_quill
+                # Usiamo 'html=True' per salvare i grassetti e le liste
+                nt = st_quill(
+                    value=st.session_state[nt_key], 
+                    height=200, # Un po' più alto così si lavora bene
+                    html=True, 
+                    key=f"quill_note_{sn}_{idx_n}" # Chiave dinamica basata sull'indice per resettarsi al cambio articolo
+                )
+
                 if st.button("Conferma Nota", key=f"btn_note_{sn}"):
                     st.session_state[nt_key] = nt
-                    st.success("Nota pronta!")
-
-            # --- 2. GESTIONE DOCUMENTI (PLATINUM EDITION) ---
+                    # Aggiorniamo anche il DataFrame se necessario, così non perdiamo nulla
+                    df.at[idx_n, 'Note'] = nt
+                    st.success("Nota salvata con stile! ✨")
+                    #  --- 2. GESTIONE DOCUMENTI (PLATINUM EDITION) ---
             st.markdown("---")
             with st.expander("📂 GESTIONE DOCUMENTI (Fatture, Scontrini, Garanzie)"):
                 # Creiamo la lista usando l'ID che abbiamo recuperato prima
