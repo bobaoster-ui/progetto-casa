@@ -690,10 +690,28 @@ else:
                 )
 
                 if st.button("Conferma Nota", key=f"btn_note_{sn}"):
+                    # 1. Aggiorniamo la memoria locale (DataFrame e Session State)
                     st.session_state[nt_key] = nt
-                    # Aggiorniamo anche il DataFrame se necessario, così non perdiamo nulla
                     df.at[idx_n, 'Note'] = nt
-                    st.success("Nota salvata con stile! ✨")
+                    
+                    # 2. SALVATAGGIO REALE SU SUPABASE 🚀
+                    try:
+                        # Recuperiamo l'ID (assicurati che df abbia la colonna 'id')
+                        # Se la colonna si chiama 'ID' (maiuscolo), correggi qui sotto:
+                        id_riga = int(df.at[idx_n, 'id']) 
+                        
+                        # Usiamo la connessione 'supabase' che hai già inizializzato
+                        supabase.table("arredamento").update(
+                            {"Note": nt}
+                        ).eq("id", id_riga).execute()
+                        st.success("Nota salvata su Supabase della **Proprietà**! ☁️")
+                    except Exception as e:
+                        st.error(f"Errore nel salvataggio su database: {e}")
+                    # --- IL PEZZO MANCANTE ---
+                    # Qui devi aggiungere la riga che salva il tuo file, tipo:
+                    # df.to_csv("tuo_file.csv", index=False) 
+                    # oppure chiamare la funzione salva_dati(df) se l'hai creata
+                    # st.success("Nota salvata su DISCO! Ora è al sicuro. 💾")
                     #  --- 2. GESTIONE DOCUMENTI (PLATINUM EDITION) ---
             st.markdown("---")
             with st.expander("📂 GESTIONE DOCUMENTI (Fatture, Scontrini, Garanzie)"):
