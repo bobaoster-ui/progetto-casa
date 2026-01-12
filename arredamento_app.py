@@ -189,30 +189,27 @@ else:
             # Prendiamo solo i nomi unici degli oggetti coinvolti
             ordini_esistenti = sorted(df_cont['oggetti_coinvolti'].unique().tolist())
 
+        # 1. Scelta fuori dal form per "svegliare" Streamlit
+        t_mov = st.selectbox("Tipo Movimento", ["Ordine", "Pagamento"])
         with st.expander("➕ Registra Nuovo Ordine o Pagamento", expanded=False):
-            with st.form("form_contabilita_v2", clear_on_submit=True):
+            with st.form("form_contabilita_v3", clear_on_submit=True):
                 c1, c2, c3 = st.columns([1, 1, 1])
                 
                 with c1:
-                    # TIPO E DATA
-                    t_mov = st.selectbox("Tipo Movimento", ["Ordine", "Pagamento"])
+                    # DATA (Abbiamo tolto t_mov da qui!)
                     d_mov = st.date_input("Data", datetime.now())
-                with c2:
                     importo = st.number_input("Importo (€)", min_value=0.0, step=10.0)
-                    
-                    # Usiamo un titolo che cambia per "svegliare" Streamlit
-                    etichetta = "Dettagli Ordine" if t_mov == "Ordine" else "Riferimento Pagamento"
-                    st.write(f"**{etichetta}**")
-                    
+                with c2:
+                    # LOGICA DINAMICA (Ora t_mov è quello fuori e Streamlit lo sente subito!)
                     if t_mov == "Ordine":
-                        scelta = st.radio("Tipo:", ["Nuovo", "Esistente"], horizontal=True, key="r_ordine_f")
+                        scelta = st.radio("L'ordine è:", ["Nuovo", "Esistente"], horizontal=True, key="r_ord")
                         if scelta == "Nuovo":
-                            ogg = st.text_input("Nome:", placeholder="es. Cucina", key="t_nuovo_f")
+                            ogg = st.text_input("Nome Nuovo Ordine", placeholder="es. Cucina Lube", key="t_nuo")
                         else:
-                            ogg = st.selectbox("Seleziona:", ordini_esistenti if ordini_esistenti else ["Vuoto"], key="s_esist_f")
+                            ogg = st.selectbox("Seleziona Ordine", ordini_esistenti if ordini_esistenti else ["Nessun ordine"], key="s_ord")
                     else:
-                        # SEZIONE PAGAMENTO: Qui NON c'è la radio, quindi DEVE cambiare
-                        ogg = st.selectbox("Ordini della Proprietà:", ordini_esistenti if ordini_esistenti else ["Nessun ordine"], key="s_pag_f")
+                        st.write("**Riferito all'ordine:**")
+                        ogg = st.selectbox("Scegli:", ordini_esistenti if ordini_esistenti else ["Nessun ordine"], label_visibility="collapsed", key="s_pag")
                 with c3:
                     # NOTA E FILE
                     descr = st.text_input("Nota", placeholder="es. Acconto 30%")
