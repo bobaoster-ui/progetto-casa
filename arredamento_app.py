@@ -118,19 +118,19 @@ else:
 
         st.session_state.dark_mode = st.toggle("🌙 Notte", st.session_state.dark_mode)
 
-    # 1. MENU DI NAVIGAZIONE
-    #        sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist"] + [f"📦 {s.capitalize()}" for s in stanze] + ["📖 Manuale"])
-        sel = st.selectbox("MENU", ["🏠 Riepilogo", "✨ Wishlist", "📥 Carico Rapido"] + [f"📦 {s.capitalize()}" for s in stanze] + ["📖 Manuale"])
-        # 2. MODIFICA STRUTTURA
-        edit_struct = st.toggle("⚙️ Modifica Struttura", False)
-
-        st.markdown(f"<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: {nome_prop}</small>", unsafe_allow_html=True)
-        # --- RECUPERO BUDGET DINAMICO ---
-
-    # Conferma visiva nella sidebar (fuori dal try)
-        st.sidebar.write(f"📁 Path: {path_scansioni}")
+    # --- 1. MENU DI NAVIGAZIONE (AGGIORNATO ALLA V1.2) ---
+    sel = st.sidebar.selectbox("MENU", 
+        ["🏠 Riepilogo", "✨ Wishlist", "📥 Carico Rapido", "📈 Contabilità"] + 
+        [f"📦 {s.capitalize()}" for s in stanze] + 
+        ["📖 Manuale"]
+    )
+    
+    edit_struct = st.sidebar.toggle("⚙️ Modifica Struttura", False)
+    st.sidebar.markdown(f"<br>---<br>✨ **Roberto & Gemini**<br><small>Proprietà: {nome_prop}</small>", unsafe_allow_html=True)
+    st.sidebar.write(f"📁 Path: {path_scansioni}")        
     # 3. IL PARACADUTE (BACKUP)
     # --- LOGICA GENERAZIONE BACKUP ---
+    
     if st.sidebar.button("📊 GENERA BACKUP TOTALE"):
         try:
             # 1. Recupero dati da Supabase
@@ -164,7 +164,80 @@ else:
 
     # --- LOGICA DELLE PAGINE ---
 
-    if sel == "🏠 Riepilogo":
+# --- AGGIUNGI QUESTO QUI! ---
+    if sel == "📈 Contabilità":
+        st.markdown(f'<div class="main-header"><h1>Amministrazione e Flussi</h1><p>Proprietà {nome_prop}</p></div>', unsafe_allow_html=True)
+        
+        # Recupero dati dal nuovo tavolo Contabilità
+        res_cont = sb.table("contabilita").select("*").order("data_movimento", desc=True).execute()
+        df_cont = pd.DataFrame(res_cont.data)
+
+        # Metriche
+        if not df_cont.empty:
+            m1, m2, m3 = st.columns(3)
+            tot_dare = df_cont['dare'].sum()
+            tot_avere = df_cont['avere'].sum()
+            residuo = tot_dare - tot_avere
+            m1.metric("Totale Ordini (DARE)", f"€ {tot_dare:,.2f}")
+            m2.metric("Totale Pagato (AVERE)", f"€ {tot_avere:,.2f}")
+            m3.metric("Residuo da Saldare", f"€ {residuo:,.2f}")
+
+        # Maschera di inserimento (il form che abbiamo scritto prima)
+        with st.expander("➕ Registra Nuovo Ordine o Pagamento", expanded=False):
+            with st.form("form_contab", clear_on_submit=True):
+                c1, c2, c3 = st.columns([1, 1, 1])
+                with c1:
+                    t_mov = st.selectbox("Tipo", ["Ordine", "Pagamento"])
+                    d_mov = st.date_input("Data", datetime.now())
+                with c2:
+                    importo = st.number_input("Importo (€)", min_value=0.0, step=10.0)
+                    ogg = st.text_input("Oggetti (es: Cucina, Tavolo)")
+                with c3:
+                    descr = st.text_input("Nota (es: Acconto 30%)")
+                    f_doc = st.file_uploader("Documento PDF/IMG", type=['pdf','jpg','png'])
+                
+                if st.form_submit_button("🚀 Memorizza Movimento"):
+                    url_f = None
+                    if f_doc:
+                        f_name = f"cont_{int(time.time())}_{f_doc.name}"
+                        sb.storage.from_("contabilita_documenti").upload(f_name, f_doc.getvalue())
+                        url_f = sb.storage.from_("contabilita_documenti").get_public_url(f_name)
+                    
+                    nuovo_rec = {
+                        "data_movimento": str(d_mov),
+                        "tipo": t_mov,
+                        "descrizione": descr,
+                        "oggetti_coinvolti": ogg,
+                        "dare": importo if t_mov == "Ordine" else 0,
+                        "avere": importo if t_mov == "Pagamento" else 0,
+                        "url_documento": url_f
+                    }
+                    sb.table("contabilita").insert(nuovo_rec).execute()
+                    st.success("Registrato!")
+                    st.rerun()
+
+# --- VISUALIZZAZIONE ESTRATTO CONTO ---
+        if not df_cont.empty:
+            # Pulizia per visualizzazione
+            df_viz = df_cont.copy()
+            df_viz = df_viz.rename(columns={
+                'data_movimento': 'Data', 'tipo': 'Tipo', 'descrizione': 'Nota',
+                'oggetti_coinvolti': 'Riferimento', 'dare': 'Dare (€)', 'avere': 'Avere (€)'
+            })
+            
+            st.dataframe(
+                df_viz[['Data', 'Tipo', 'Riferimento', 'Nota', 'Dare (€)', 'Avere (€)', 'url_documento']],
+                column_config={
+                    "url_documento": st.column_config.LinkColumn("📄 Doc", display_text="Apri"),
+                    "Dare (€)": st.column_config.NumberColumn(format="%.2f"),
+                    "Avere (€)": st.column_config.NumberColumn(format="%.2f")
+                },
+                use_container_width=True, hide_index=True
+            )
+        else:
+            st.info("Nessun movimento contabile registrato.")
+
+    elif sel == "🏠 Riepilogo":
 
         st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà Jacopo</p></div>', unsafe_allow_html=True)
         # 1. RECUPERO DATI GLOBALI
