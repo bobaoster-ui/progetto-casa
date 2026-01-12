@@ -201,18 +201,17 @@ else:
                 with c2:
                     # IMPORTO E LOGICA DINAMICA (Senza duplicati!)
                     importo = st.number_input("Importo (€)", min_value=0.0, step=10.0)
-                    
                     if t_mov == "Ordine":
                         scelta = st.radio("L'ordine è:", ["Nuovo", "Esistente"], horizontal=True)
                         if scelta == "Nuovo":
-                            ogg = st.text_input("Nome Nuovo Ordine", placeholder="es. Cucina Lube")
+                            # AGGIUNTO key="nuovo_ogg"
+                            ogg = st.text_input("Nome Nuovo Ordine", placeholder="es. Cucina Lube", key="nuovo_ogg")
                         else:
-                            # QUI appare la lista se scegli Ordine -> Esistente
-                            ogg = st.selectbox("Seleziona Ordine", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"])
+                            # AGGIUNTO key="lista_ord_esist"
+                            ogg = st.selectbox("Seleziona Ordine", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], key="lista_ord_esist")
                     else:
-                        # QUI appare la lista se scegli Pagamento
-                        ogg = st.selectbox("Riferito a:", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"])
-                
+                        # AGGIUNTO key="lista_pag"
+                        ogg = st.selectbox("Riferito a:", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], key="lista_pag")                
                 with c3:
                     # NOTA E FILE
                     descr = st.text_input("Nota", placeholder="es. Acconto 30%")
