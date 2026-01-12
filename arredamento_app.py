@@ -183,47 +183,76 @@ else:
             m3.metric("Residuo da Saldare", f"€ {residuo:,.2f}")
 
         # Maschera di inserimento (il form che abbiamo scritto prima)
+# 1. Recuperiamo gli ordini (FUORI dal form per evitare errori)
+        ordini_esistenti = []
+        if not df_cont.empty:
+            # Prendiamo solo i nomi unici degli oggetti coinvolti
+            ordini_esistenti = sorted(df_cont['oggetti_coinvolti'].unique().tolist())
+
         with st.expander("➕ Registra Nuovo Ordine o Pagamento", expanded=False):
-            with st.form("form_contab", clear_on_submit=True):
+            with st.form("form_contabilita", clear_on_submit=True):
                 c1, c2, c3 = st.columns([1, 1, 1])
+                
                 with c1:
-                    t_mov = st.selectbox("Tipo", ["Ordine", "Pagamento"])
+                    t_mov = st.selectbox("Tipo Movimento", ["Ordine", "Pagamento"])
                     d_mov = st.date_input("Data", datetime.now())
+                
                 with c2:
                     importo = st.number_input("Importo (€)", min_value=0.0, step=10.0)
-                    ogg = st.text_input("Oggetti (es: Cucina, Tavolo)")
-                with c3:
-                    descr = st.text_input("Nota (es: Acconto 30%)")
-                    f_doc = st.file_uploader("Documento PDF/IMG", type=['pdf','jpg','png'])
-                
-                if st.form_submit_button("🚀 Memorizza Movimento"):
-                    url_f = None
-                    if f_doc:
-                        f_name = f"cont_{int(time.time())}_{f_doc.name}"
-                        sb.storage.from_("contabilita_documenti").upload(
-                            f_name, 
-                            f_doc.getvalue(), 
-                            {"content-type": "application/pdf"}  # <--- IL SEGRETO È QUI!
-                        )
-                        url_f = sb.storage.from_("contabilita_documenti").get_public_url(f_name)
                     
-                    nuovo_rec = {
-                        "data_movimento": str(d_mov),
-                        "tipo": t_mov,
-                        "descrizione": descr,
-                        "oggetti_coinvolti": ogg,
-                        "dare": importo if t_mov == "Ordine" else 0,
-                        "avere": importo if t_mov == "Pagamento" else 0,
-                        "url_documento": url_f
-                    }
-                    sb.table("contabilita").insert(nuovo_rec).execute()
-                    st.success("Registrato!")
-                    st.rerun()
+                    # --- LA MAGIA DINAMICA ---
+                    if t_mov == "Ordine":
+                        scelta = st.radio("L'ordine è:", ["Nuovo", "Esistente"], horizontal=True)
+                        if scelta == "Nuovo":
+                            ogg = st.text_input("Nome Nuovo Ordine", placeholder="es. Cucina Lube")
+                        else:
+                            ogg = st.selectbox("Seleziona Ordine", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"])
+                    else:
+                        # Se è pagamento, DEVE scegliere un ordine esistente
+                        ogg = st.selectbox("Riferito a:", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"])
+                
+                with c3:
+                    descr = st.text_input("Nota", placeholder="es. Acconto 30%")
+                    f_doc = st.file_uploader("Documento PDF/IMG", type=['pdf', 'jpg', 'png'])
 
-# --- VISUALIZZAZIONE ESTRATTO CONTO ---
+                # Bottone di invio
+                # Bottone di invio (Indentato dentro il form)
+                submit = st.form_submit_button("🚀 Memorizza Movimento")
+                
+                if submit:
+                    if not ogg or ogg == "Nessun ordine trovato":
+                        st.warning("⚠️ Per favore, specifica a quale oggetto o ordine si riferisce il movimento!")
+                    else:                    
+                        url_f = None 
+                        if f_doc:
+                            f_name = f"cont_{int(time.time())}_{f_doc.name}"
+                            sb.storage.from_("contabilita_documenti").upload(
+                                f_name, 
+                                f_doc.getvalue(), 
+                                {"content-type": f_doc.type}
+                            )
+                            url_f = sb.storage.from_("contabilita_documenti").get_public_url(f_name)
+                        
+                        nuovo_rec = {
+                            "data_movimento": str(d_mov),
+                            "tipo": t_mov,
+                            "descrizione": descr,
+                            "oggetti_coinvolti": ogg,
+                            "dare": importo if t_mov == "Ordine" else 0,
+                            "avere": importo if t_mov == "Pagamento" else 0,
+                            "url_documento": url_f
+                        }
+                        
+                        try:
+                            sb.table("contabilita").insert(nuovo_rec).execute()
+                            st.success(f"✅ {t_mov} registrato per {ogg}!")
+                            st.rerun() 
+                        except Exception as e:
+                            st.error(f"Errore nel salvataggio: {e}")
+
+        # --- VISUALIZZAZIONE ESTRATTO CONTO (Torna a livello dell'expander) ---
         if not df_cont.empty:
-            st.write("### 📜 Movimenti Registrati")
-            
+            st.write("### 📜 Movimenti Registrati")            
             # Creiamo una riga per ogni movimento per avere più controllo
             for i, row in df_cont.iterrows():
                 with st.container():
