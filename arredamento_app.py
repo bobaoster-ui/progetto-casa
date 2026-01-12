@@ -218,22 +218,33 @@ else:
 
 # --- VISUALIZZAZIONE ESTRATTO CONTO ---
         if not df_cont.empty:
-            # Pulizia per visualizzazione
-            df_viz = df_cont.copy()
-            df_viz = df_viz.rename(columns={
-                'data_movimento': 'Data', 'tipo': 'Tipo', 'descrizione': 'Nota',
-                'oggetti_coinvolti': 'Riferimento', 'dare': 'Dare (€)', 'avere': 'Avere (€)'
-            })
+            st.write("### 📜 Movimenti Registrati")
             
-            st.dataframe(
-                df_viz[['Data', 'Tipo', 'Riferimento', 'Nota', 'Dare (€)', 'Avere (€)', 'url_documento']],
-                column_config={
-                    "url_documento": st.column_config.LinkColumn("📄 Doc", display_text="Apri"),
-                    "Dare (€)": st.column_config.NumberColumn(format="%.2f"),
-                    "Avere (€)": st.column_config.NumberColumn(format="%.2f")
-                },
-                use_container_width=True, hide_index=True
-            )
+            # Creiamo una riga per ogni movimento per avere più controllo
+            for i, row in df_cont.iterrows():
+                with st.container():
+                    col_data, col_info, col_soldi, col_file = st.columns([1, 3, 2, 1])
+                    
+                    with col_data:
+                        st.caption(f"📅 {row['data_movimento']}")
+                        st.write(f"**{row['tipo']}**")
+                    
+                    with col_info:
+                        st.write(f"🔍 {row['oggetti_coinvolti']}")
+                        st.caption(f"📝 {row['descrizione']}")
+                    
+                    with col_soldi:
+                        if row['dare'] > 0:
+                            st.error(f"Dare: € {row['dare']:,.2f}")
+                        if row['avere'] > 0:
+                            st.success(f"Avere: € {row['avere']:,.2f}")
+                    
+                    with col_file:
+                        if row['url_documento']:
+                            # Usiamo un link diretto che forza l'apertura corretta
+#                            st.markdown(f"[📄 Vedi Doc]({row['url_documento']})")
+                            st.markdown(f'<a href="{row["url_documento"]}" target="_blank" style="text-decoration: none; border: 1px solid #2e5a88; padding: 5px 10px; border-radius: 5px;">📄 Apri Doc</a>', unsafe_allow_html=True)                    
+                    st.divider()
         else:
             st.info("Nessun movimento contabile registrato.")
 
