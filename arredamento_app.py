@@ -199,20 +199,22 @@ else:
                     d_mov = st.date_input("Data", datetime.now())
                 
                 with c2:
+                    # Importo comune a entrambi
                     importo = st.number_input("Importo (€)", min_value=0.0, step=10.0)
                     
+                    # Creiamo un contenitore vuoto che forziamo a cambiare "identità"
+                    # in base al tipo di movimento scelto.
                     if t_mov == "Ordine":
-                        # Aggiungiamo una key specifica per la radio dell'ordine
                         scelta = st.radio("L'ordine è:", ["Nuovo", "Esistente"], horizontal=True, key="radio_ordine")
-                        
                         if scelta == "Nuovo":
-                            ogg = st.text_input("Nome Nuovo Ordine", placeholder="es. Cucina Lube", key="txt_nuovo_ordine")
+                            ogg = st.text_input("Nome Nuovo Ordine", placeholder="es. Cucina Lube", key="txt_nuovo")
                         else:
-                            ogg = st.selectbox("Seleziona Ordine", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], key="sel_ordine_esistente")
-                    
-                    else: # Caso PAGAMENTO
-                        # Usiamo una key diversa per la selectbox del pagamento
-                        ogg = st.selectbox("Riferito all'Ordine:", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], key="sel_riferimento_pagamento")
+                            ogg = st.selectbox("Seleziona Ordine", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], key="sel_ord_esistente")
+                    else:
+                        # Se è Pagamento, non mostriamo la radio Nuovo/Esistente!
+                        # Usiamo un'etichetta fissa e la lista a discesa
+                        st.markdown("**Riferito all'ordine:**")
+                        ogg = st.selectbox("Scegli:", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], label_visibility="collapsed", key="sel_pag_diretto")
                 with c3:
                     # NOTA E FILE
                     descr = st.text_input("Nota", placeholder="es. Acconto 30%")
