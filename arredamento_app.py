@@ -57,11 +57,27 @@ def upload_documento(file, articolo_id, descrizione):
 def genera_pdf_riepilogo(nome_ordine, df_f, tot, pagato, residuo):
     pdf = FPDF()
     pdf.add_page()
+
+# --- LOGO TESTUALE STILIZZATO (Il nostro "Logo senza bug") ---
+    pdf.set_font("Arial", 'B', 16)
+    pdf.set_text_color(41, 128, 185) # Blu professionale
+    pdf.cell(0, 10, "PROPRIETÀ", ln=True, align='L')
     
+    pdf.set_font("Arial", 'I', 8)
+    pdf.set_text_color(100, 100, 100) # Grigio sobrio
+    pdf.cell(0, 5, "Accounting Intelligence & Document-Flow", ln=True, align='L')
+    
+    # Linea sottile di separazione (molto elegante)
+    pdf.set_draw_color(41, 128, 185)
+    pdf.line(10, 27, 200, 27)
+    pdf.ln(10)
+
     # Titolo
-    pdf.set_font("Arial", "B", 20)
-    pdf.set_text_color(46, 90, 136)
-    pdf.cell(0, 15, f"Riepilogo Ordine: {nome_ordine}", ln=True, align="C")
+    pdf.set_font("Arial", 'B', 14)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(0, 10, f"RIEPILOGO MOVIMENTI: {ordine}", ln=True, align='C')
+    pdf.ln(5)
+
     
     pdf.set_font("Arial", "", 10)
     pdf.set_text_color(0, 0, 0)
