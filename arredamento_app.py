@@ -262,7 +262,8 @@ else:
                 
                 with c1:
                     # DATA (Abbiamo tolto t_mov da qui!)
-                    d_mov = st.date_input("Data", datetime.now())
+                    d_mov = st.date_input("Data", datetime.now(), format="DD/MM/YYYY") # Qui l'utente la vede bene
+                    data_per_pdf = d_mov.strftime("%d/%m/%Y") # Qui la trasformi in testo per il PDF o il DB
                     importo = st.number_input("Importo (€)", min_value=0.0, step=10.0)
                 with c2:
                     # LOGICA DINAMICA (Ora t_mov è quello fuori e Streamlit lo sente subito!)
