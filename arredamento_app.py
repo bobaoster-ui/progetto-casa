@@ -273,16 +273,28 @@ else:
                             st.markdown(f'<a href="{row["url_documento"]}" target="_blank" style="text-decoration: none; border: 1px solid #2e5a88; padding: 5px 10px; border-radius: 5px; font-size: 12px;">📄 Doc</a>', unsafe_allow_html=True)
                     
                     with col_azioni:
-                        # Tasto per cancellare (usa l'ID del record di Supabase)
+                        # Tasto per cancellare con pulizia automatica dello Storage
                         if st.button("🗑️", key=f"del_{row['id']}"):
                             try:
+                                # 1. Se c'è un documento, cancelliamolo prima dallo Storage
+                                if row['url_documento']:
+                                    # Estraiamo il nome del file dall'URL
+                                    # L'URL di Supabase finisce con .../nome_file.pdf
+                                    file_name = row['url_documento'].split('/')[-1]
+                                    
+                                    try:
+                                        sb.storage.from_("contabilita_documenti").remove([file_name])
+                                    except Exception as storage_err:
+                                        st.warning(f"Nota: Record eliminato, ma non è stato possibile rimuovere il file fisico: {storage_err}")
+
+                                # 2. Cancelliamo la riga dal database
                                 sb.table("contabilita").delete().eq("id", row['id']).execute()
-                                st.success("Eliminato!")
+                                
+                                st.success("Movimento e documento eliminati correttamente!")
                                 st.rerun()
                             except Exception as e:
-                                st.error(f"Errore: {e}")
-                    
-                    st.divider()
+                                st.error(f"Errore durante la cancellazione: {e}")                    
+                st.divider()
         else:
             st.info("Nessun movimento contabile registrato.")
 
