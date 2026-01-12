@@ -692,7 +692,7 @@ else:
                 if st.button("Conferma Nota", key=f"btn_note_{sn}"):
                     # 1. Aggiorniamo la memoria locale (DataFrame e Session State)
                     st.session_state[nt_key] = nt
-                    df.at[idx_n, 'Note'] = nt
+                    df.at[idx_n, 'note'] = nt
                     
                     # 2. SALVATAGGIO REALE SU SUPABASE 🚀
                     try:
@@ -702,7 +702,7 @@ else:
                         
                         # Usiamo la connessione 'supabase' che hai già inizializzato
                         sb.table("arredamento").update(
-                            {"Note": nt}
+                            {"note": nt}
                         ).eq("id", id_riga).execute()
                         st.success("Nota salvata su Supabase della **Proprietà**! ☁️")
                     except Exception as e:
