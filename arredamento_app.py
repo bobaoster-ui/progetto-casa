@@ -200,7 +200,11 @@ else:
                     url_f = None
                     if f_doc:
                         f_name = f"cont_{int(time.time())}_{f_doc.name}"
-                        sb.storage.from_("contabilita_documenti").upload(f_name, f_doc.getvalue())
+                        sb.storage.from_("contabilita_documenti").upload(
+                            f_name, 
+                            f_doc.getvalue(), 
+                            {"content-type": "application/pdf"}  # <--- IL SEGRETO È QUI!
+                        )
                         url_f = sb.storage.from_("contabilita_documenti").get_public_url(f_name)
                     
                     nuovo_rec = {
