@@ -75,9 +75,8 @@ def genera_pdf_riepilogo(nome_ordine, df_f, tot, pagato, residuo):
     # Titolo
     pdf.set_font("Arial", 'B', 14)
     pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 10, f"RIEPILOGO MOVIMENTI: {ordine}", ln=True, align='C')
+    pdf.cell(0, 10, f"RIEPILOGO MOVIMENTI: {ordine_selezionato}", ln=True, align='C')
     pdf.ln(5)
-
     
     pdf.set_font("Arial", "", 10)
     pdf.set_text_color(0, 0, 0)
