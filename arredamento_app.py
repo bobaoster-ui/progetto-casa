@@ -199,22 +199,24 @@ else:
                     d_mov = st.date_input("Data", datetime.now())
                 
                 with c2:
-                    # Importo comune a entrambi
+                    # Importo (comune a entrambi)
                     importo = st.number_input("Importo (€)", min_value=0.0, step=10.0)
                     
-                    # Creiamo un contenitore vuoto che forziamo a cambiare "identità"
-                    # in base al tipo di movimento scelto.
-                    if t_mov == "Ordine":
-                        scelta = st.radio("L'ordine è:", ["Nuovo", "Esistente"], horizontal=True, key="radio_ordine")
-                        if scelta == "Nuovo":
-                            ogg = st.text_input("Nome Nuovo Ordine", placeholder="es. Cucina Lube", key="txt_nuovo")
+                    # --- IL TRUCCO DEL SOCIO ---
+                    # Usiamo un contenitore che si resetta in base a t_mov
+                    area_dinamica = st.container()
+                    
+                    with area_dinamica:
+                        if t_mov == "Ordine":
+                            scelta = st.radio("L'ordine è:", ["Nuovo", "Esistente"], horizontal=True, key="r_ord")
+                            if scelta == "Nuovo":
+                                ogg = st.text_input("Nome Nuovo Ordine", placeholder="es. Cucina Lube", key="t_nuovo")
+                            else:
+                                ogg = st.selectbox("Seleziona Ordine", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], key="s_ord")
                         else:
-                            ogg = st.selectbox("Seleziona Ordine", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], key="sel_ord_esistente")
-                    else:
-                        # Se è Pagamento, non mostriamo la radio Nuovo/Esistente!
-                        # Usiamo un'etichetta fissa e la lista a discesa
-                        st.markdown("**Riferito all'ordine:**")
-                        ogg = st.selectbox("Scegli:", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], label_visibility="collapsed", key="sel_pag_diretto")
+                            # Se è PAGAMENTO, cancelliamo ogni dubbio e mostriamo SOLO la lista
+                            st.write("**Riferito all'ordine:**")
+                            ogg = st.selectbox("Scegli Ordine:", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], label_visibility="collapsed", key="s_pag")
                 with c3:
                     # NOTA E FILE
                     descr = st.text_input("Nota", placeholder="es. Acconto 30%")
