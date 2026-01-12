@@ -113,7 +113,8 @@ def genera_pdf_riepilogo(nome_ordine, df_f, tot, pagato, residuo):
         imp = row['dare'] if row['tipo'] == 'Ordine' else row['avere']
 # 2. Formatti la data in formato italiano gg/mm/aaaa
         # Usiamo un controllo per sicurezza: se è già una data, la formattiamo, altrimenti la scriviamo così com'è
-        data_ita = row['data_movimento'].strftime("%d/%m/%Y") if hasattr(row['data_movimento'], 'strftime') else str(row['data_movimento'])
+        dt_obj = pd.to_datetime(row['data_movimento'])
+        data_ita = dt_obj.strftime("%d/%m/%Y")
         pdf.cell(30, 8, data_ita, 1, 0, "C") # <-- Usiamo data_ita qui
 #        pdf.cell(30, 8, str(row['data_movimento']), 1, 0, "C")
         pdf.cell(30, 8, row['tipo'], 1, 0, "C")
