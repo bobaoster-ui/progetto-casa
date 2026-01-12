@@ -249,11 +249,54 @@ else:
 
         # --- VISUALIZZAZIONE ESTRATTO CONTO (Torna a livello dell'expander) ---
         # --- VISUALIZZAZIONE ESTRATTO CONTO AGGIORNATA ---
+# --- 1. SEZIONE FILTRI E RICERCA (Mettila subito sotto la fine del form/expander) ---
+        st.write("---")
+        st.subheader("📊 Analisi e Ricerca")
+        
+        # Lista ordini per il filtro (prendiamo i nomi unici dalla tabella)
+        ordini_per_filtro = []
         if not df_cont.empty:
-            st.write("### 📜 Movimenti Registrati")            
-            for i, row in df_cont.iterrows():
+            ordini_per_filtro = sorted(df_cont['oggetti_coinvolti'].unique().tolist())
+        
+        # Questa selectbox crea il filtro
+        ordine_selezionato = st.selectbox("Filtra per Ordine/Oggetto:", ["Tutti"] + ordini_per_filtro, key="filtro_ordini")
+
+        # Prepariamo i dati filtrati: se è "Tutti" copia tutto, altrimenti filtra
+        if ordine_selezionato == "Tutti":
+            df_visualizza = df_cont.copy()
+        else:
+            df_visualizza = df_cont[df_cont['oggetti_coinvolti'] == ordine_selezionato].copy()
+
+        # --- 2. LA SCHEDA PRO (Appare solo se selezioni un ordine specifico) ---
+        if ordine_selezionato != "Tutti" and not df_visualizza.empty:
+            tot_ordine = df_visualizza[df_visualizza['tipo'] == 'Ordine']['dare'].sum()
+            tot_pagato = df_visualizza[df_visualizza['tipo'] == 'Pagamento']['avere'].sum()
+            residuo_singolo = tot_ordine - tot_pagato
+            
+            with st.container(border=True):
+                st.markdown(f"### 📑 Riepilogo: {ordine_selezionato}")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Costo Totale", f"€ {tot_ordine:,.2f}")
+                
+                # Calcolo percentuale di avanzamento
+                percentuale = (tot_pagato / tot_ordine * 100) if tot_ordine > 0 else 0
+                c2.metric("Pagato", f"€ {tot_pagato:,.2f}", delta=f"{percentuale:.1f}% del totale")
+                
+                # Box per il residuo
+                color_res = "green" if residuo_singolo <= 0 else "#D32F2F"
+                c3.markdown(f"""
+                    <div style="text-align: center; background-color: rgba(0,0,0,0.05); padding: 10px; border-radius: 10px; border-left: 5px solid {color_res};">
+                        <p style="margin:0; font-size: 0.9em; color: gray;">Residuo da versare</p>
+                        <h2 style="margin:0; color: {color_res};">€ {residuo_singolo:,.2f}</h2>
+                    </div>
+                """, unsafe_allow_html=True)
+
+        # --- 3. VISUALIZZAZIONE LISTA (Usa df_visualizza invece di df_cont) ---
+        st.write(f"### 📜 Elenco Movimenti: {ordine_selezionato}")            
+        
+        if not df_visualizza.empty:
+            for i, row in df_visualizza.iterrows():
                 with st.container():
-                    # Aggiungiamo una colonna per le azioni (Cestino)
                     col_data, col_info, col_soldi, col_file, col_azioni = st.columns([1, 2.5, 2, 1, 0.5])
                     
                     with col_data:
@@ -273,30 +316,21 @@ else:
                             st.markdown(f'<a href="{row["url_documento"]}" target="_blank" style="text-decoration: none; border: 1px solid #2e5a88; padding: 5px 10px; border-radius: 5px; font-size: 12px;">📄 Doc</a>', unsafe_allow_html=True)
                     
                     with col_azioni:
-                        # Tasto per cancellare con pulizia automatica dello Storage
                         if st.button("🗑️", key=f"del_{row['id']}"):
                             try:
-                                # 1. Se c'è un documento, cancelliamolo prima dallo Storage
                                 if row['url_documento']:
-                                    # Estraiamo il nome del file dall'URL
-                                    # L'URL di Supabase finisce con .../nome_file.pdf
                                     file_name = row['url_documento'].split('/')[-1]
-                                    
                                     try:
                                         sb.storage.from_("contabilita_documenti").remove([file_name])
-                                    except Exception as storage_err:
-                                        st.warning(f"Nota: Record eliminato, ma non è stato possibile rimuovere il file fisico: {storage_err}")
-
-                                # 2. Cancelliamo la riga dal database
+                                    except: pass
                                 sb.table("contabilita").delete().eq("id", row['id']).execute()
-                                
-                                st.success("Movimento e documento eliminati correttamente!")
+                                st.success("Eliminato!")
                                 st.rerun()
                             except Exception as e:
-                                st.error(f"Errore durante la cancellazione: {e}")                    
+                                st.error(f"Errore: {e}")                    
                 st.divider()
         else:
-            st.info("Nessun movimento contabile registrato.")
+            st.info(f"Nessun movimento trovato per {ordine_selezionato}.")
 
     elif sel == "🏠 Riepilogo":
 
