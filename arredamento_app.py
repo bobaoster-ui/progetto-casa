@@ -701,7 +701,7 @@ else:
                         id_riga = int(df.at[idx_n, 'id']) 
                         
                         # Usiamo la connessione 'supabase' che hai già inizializzato
-                        supabase.table("arredamento").update(
+                        sb.table("arredamento").update(
                             {"Note": nt}
                         ).eq("id", id_riga).execute()
                         st.success("Nota salvata su Supabase della **Proprietà**! ☁️")
