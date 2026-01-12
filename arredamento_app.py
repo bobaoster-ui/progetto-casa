@@ -183,7 +183,7 @@ else:
             m3.metric("Residuo da Saldare", f"€ {residuo:,.2f}")
 
         # Maschera di inserimento (il form che abbiamo scritto prima)
-# 1. Recuperiamo gli ordini (FUORI dal form per evitare errori)
+        # 1. Recuperiamo gli ordini (FUORI dal form per evitare errori)
         ordini_esistenti = []
         if not df_cont.empty:
             # Prendiamo solo i nomi unici degli oggetti coinvolti
@@ -206,11 +206,10 @@ else:
                         if scelta == "Nuovo":
                             ogg = st.text_input("Nome Nuovo Ordine", placeholder="es. Cucina Lube")
                         else:
-                            ogg = st.selectbox("Seleziona Ordine", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"])
+                            ogg = st.selectbox("Seleziona Ordine", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], key="sel_ord")
                     else:
                         # Se è pagamento, DEVE scegliere un ordine esistente
-                        ogg = st.selectbox("Riferito a:", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"])
-                
+                        ogg = st.selectbox("Riferito a:", ordini_esistenti if ordini_esistenti else ["Nessun ordine trovato"], key="sel_pag")                
                 with c3:
                     descr = st.text_input("Nota", placeholder="es. Acconto 30%")
                     f_doc = st.file_uploader("Documento PDF/IMG", type=['pdf', 'jpg', 'png'])
