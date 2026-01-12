@@ -248,12 +248,13 @@ else:
                             st.error(f"Errore nel salvataggio: {e}")
 
         # --- VISUALIZZAZIONE ESTRATTO CONTO (Torna a livello dell'expander) ---
+        # --- VISUALIZZAZIONE ESTRATTO CONTO AGGIORNATA ---
         if not df_cont.empty:
             st.write("### 📜 Movimenti Registrati")            
-            # Creiamo una riga per ogni movimento per avere più controllo
             for i, row in df_cont.iterrows():
                 with st.container():
-                    col_data, col_info, col_soldi, col_file = st.columns([1, 3, 2, 1])
+                    # Aggiungiamo una colonna per le azioni (Cestino)
+                    col_data, col_info, col_soldi, col_file, col_azioni = st.columns([1, 2.5, 2, 1, 0.5])
                     
                     with col_data:
                         st.caption(f"📅 {row['data_movimento']}")
@@ -264,16 +265,23 @@ else:
                         st.caption(f"📝 {row['descrizione']}")
                     
                     with col_soldi:
-                        if row['dare'] > 0:
-                            st.error(f"Dare: € {row['dare']:,.2f}")
-                        if row['avere'] > 0:
-                            st.success(f"Avere: € {row['avere']:,.2f}")
+                        if row['dare'] > 0: st.error(f"Dare: € {row['dare']:,.2f}")
+                        if row['avere'] > 0: st.success(f"Avere: € {row['avere']:,.2f}")
                     
                     with col_file:
                         if row['url_documento']:
-                            # Usiamo un link diretto che forza l'apertura corretta
-#                            st.markdown(f"[📄 Vedi Doc]({row['url_documento']})")
-                            st.markdown(f'<a href="{row["url_documento"]}" target="_blank" style="text-decoration: none; border: 1px solid #2e5a88; padding: 5px 10px; border-radius: 5px;">📄 Apri Doc</a>', unsafe_allow_html=True)                    
+                            st.markdown(f'<a href="{row["url_documento"]}" target="_blank" style="text-decoration: none; border: 1px solid #2e5a88; padding: 5px 10px; border-radius: 5px; font-size: 12px;">📄 Doc</a>', unsafe_allow_html=True)
+                    
+                    with col_azioni:
+                        # Tasto per cancellare (usa l'ID del record di Supabase)
+                        if st.button("🗑️", key=f"del_{row['id']}"):
+                            try:
+                                sb.table("contabilita").delete().eq("id", row['id']).execute()
+                                st.success("Eliminato!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Errore: {e}")
+                    
                     st.divider()
         else:
             st.info("Nessun movimento contabile registrato.")
