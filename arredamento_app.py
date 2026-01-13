@@ -8,7 +8,12 @@ import time
 import requests
 import io  # <--- AGGIUNGI SOLO QUESTO
 import os
+import matplotlib
+matplotlib.use('Agg') # Fondamentale per far girare i grafici sul server
+import matplotlib.pyplot as plt
 from streamlit_quill import st_quill
+
+
 
 def safe_float(value):
     """Converte un valore in float in modo sicuro, restituendo 0.0 se fallisce."""
@@ -738,6 +743,37 @@ else:
                     p.set_font('Arial', 'I', 8) # Font Italico e più piccolo
                     p.set_text_color(100, 100, 100) # Grigio scuro per non appesantire
                     p.cell(0, 5, "* Il totale della colonna 'Totali' somma solo le righe non soggette ad Omaggio.", 0, 1, 'L')
+                    # Raggruppiamo per stanza usando solo le spese reali (niente omaggi)
+                    df_graf_pdf = df_reali.groupby('stanza')['Importo Totale'].sum()
+
+                    if not df_graf_pdf.empty:
+                        # Creiamo il grafico (6x4 pollici è perfetto per il PDF)
+                        fig, ax = plt.subplots(figsize=(6, 4))
+                        
+                        # Usiamo i colori della tua dashboard: Blu (Cucina), Azzurro (Camera), Rosso (Lavori)
+                        colori = ['#0066cc', '#80ccff', '#ff3333', '#ffb3b3', '#33ac91']
+                        
+                        df_graf_pdf.plot(kind='pie', autopct='%1.1f%%', ax=ax, startangle=90, colors=colori)
+                        ax.set_ylabel('') 
+                        ax.set_title(f'Ripartizione Costi Reali - Proprietà Jacopo', pad=20, fontsize=12, fontweight='bold')
+
+                        # Salvataggio temporaneo
+                        plt.savefig("temp_grafico.png", bbox_inches='tight', dpi=150)
+                        plt.close()
+
+                        # Controllo spazio nel PDF: se siamo a fine pagina, ne aggiungiamo una nuova
+                        if p.get_y() > 150:
+                            p.add_page()
+                        else:
+                            p.ln(10)
+
+                        # Inseriamo il grafico centrato
+                        p.image("temp_grafico.png", x=45, w=120)
+                        
+                        # Rimuoviamo il file temporaneo per pulizia
+                        if os.path.exists("temp_grafico.png"):
+                            os.remove("temp_grafico.png")
+
                     st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
 
             # --- 1. CREIAMO LA COLONNA OMAGGIO NEL DATAFRAME ---
