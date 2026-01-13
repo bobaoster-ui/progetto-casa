@@ -512,9 +512,32 @@ else:
     elif sel == "🏠 Riepilogo":
 
         st.markdown('<div class="main-header"><h1>Command Center</h1><p>Proprietà Jacopo</p></div>', unsafe_allow_html=True)
+
         # 1. RECUPERO DATI GLOBALI
         res_tutto = sb.table("arredamento").select("*").execute()
         df_tutto = pd.DataFrame(res_tutto.data)
+
+        # --- NOVITÀ: FILTRO DINAMICO PER STANZA ---
+        # Recuperiamo le stanze uniche per il menu a tendina
+        if not df_tutto.empty:
+            stanze_disponibili = sorted(df_tutto['stanza'].unique().tolist())
+            
+            # Mettiamo il filtro in una colonna per non occupare troppo spazio
+            col_f1, col_f2 = st.columns([2, 3])
+            with col_f1:
+                stanza_scelta = st.selectbox(
+                    "🔍 Filtra per Stanza:", 
+                    ["Tutte le stanze"] + stanze_disponibili, 
+                    key="filtro_stanza_riepilogo"
+                )
+
+            # Creiamo il DataFrame filtrato in base alla scelta
+            if stanza_scelta != "Tutte le stanze":
+                df_visualizzazione = df_tutto[df_tutto['stanza'] == stanza_scelta].copy()
+            else:
+                df_visualizzazione = df_tutto.copy()
+        else:
+            df_visualizzazione = df_tutto
 
         # --- DASHBOARD GLOBALE ---
         st.write("### 📊 Riepilogo Totale Proprietà")
@@ -562,25 +585,49 @@ else:
                             st.link_button("👁️ Apri", r['link_file'], use_container_width=True)
                 else:
                     st.info("Nessun documento trovato con questo nome.")
+        st.divider()
 
+        # --- NOVITÀ: FILTRO DINAMICO ---
+        if not df_tutto.empty:
+            stanze_disponibili = sorted(df_tutto['stanza'].unique().tolist())
+            col_f1, col_f2 = st.columns([2, 3])
+            with col_f1:
+                stanza_scelta = st.selectbox(
+                    "🔍 Filtra per Stanza:", 
+                    ["Tutte le stanze"] + stanze_disponibili, 
+                    key="filtro_stanza_riepilogo"
+                )
+
+            # Creiamo il DataFrame filtrato
+            if stanza_scelta != "Tutte le stanze":
+                df_visualizzazione = df_tutto[df_tutto['stanza'] == stanza_scelta].copy()
+            else:
+                df_visualizzazione = df_tutto.copy()
+        else:
+            df_visualizzazione = df_tutto
+
+        # --- LOGICA CALCOLI (basata sul filtro) ---
+        df_all = clean_df(df_visualizzazione)
         
-        st.divider()        #un po' di spazio in fondo (evviva)
-
-
-
-        res = sb.table("arredamento").select("*").execute()
-        df_all = clean_df(pd.DataFrame(res.data))
         if not df_all.empty:
+            # Consideriamo solo gli acquisti confermati ('S')
             df_r = df_all[df_all['Acquista S/N'].str.upper().str.strip() == 'S'].copy()
+            
             conf, pag = df_r['Importo Totale'].sum(), df_r['Versato'].sum()
+            
+            # Box metriche che si aggiornano in tempo reale
             m1, m2, m3, m4 = st.columns(4)
             m1.markdown(f'<div class="metric-card">BUDGET<div class="metric-value">{bud:,.0f}€</div></div>', unsafe_allow_html=True)
             m2.markdown(f'<div class="metric-card">CONFERMATO<div class="metric-value">{conf:,.0f}€</div></div>', unsafe_allow_html=True)
             m3.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
+
             st.subheader("🗓️ Scadenzario")
             sc = df_r[df_r['Data Scadenza'].notna()].copy()
             sc = sc[sc['Versato'] < sc['Importo Totale']]
+            
+            # Da qui in poi prosegue il tuo codice per lo Stato (🔴, 🟠, 🟢) e la Tabella...
+
             if not sc.empty:
                 oggi = pd.Timestamp(datetime.now().date())
                 sc['gg'] = (sc['Data Scadenza'] - oggi).dt.days
