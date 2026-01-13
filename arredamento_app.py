@@ -175,11 +175,13 @@ else:
         conf = {r['chiave']: r for r in res_settings.data}
         bud = float(conf.get('budget_totale', {}).get('valore_num', 15000.0))
         path_scansioni = conf.get('path_scansioni', {}).get('valore_txt', '/home/roberto/Documenti/ScansioniApp')
-        # Recuperiamo il nome del proprietario (default 'Jacopo' se non trovato)
-        nome_prop = conf.get('Proprietà', {}).get('valore_txt', 'Jacopo')        
+        # Recuperiamo il nome dalla colonna 'valore_txt' dove la chiave è 'Proprietà'
+        nome_prop = conf.get('nome_proprieta', {}).get('valore_txt', 'Jacopo')        
     except Exception as e:
+        st.error(f"Errore caricamento impostazioni: {e}") # Opzionale, per debug
         bud = 15000.0
         path_scansioni = "/home/roberto/Documenti/ScansioniApp"
+        nome_prop = "Jacopo"  # <--- AGGIUNGI QUESTA RIGA! Fondamentale come paracadute.
     with st.sidebar:
         try: st.image("logo.png", use_container_width=True)
         except: pass
