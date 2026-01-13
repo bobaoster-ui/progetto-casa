@@ -595,9 +595,8 @@ else:
                 stanza_scelta = st.selectbox(
                     "🔍 Filtra per Stanza:", 
                     ["Tutte le stanze"] + stanze_disponibili, 
-                    key="filtro_stanza_riepilogo"
+                    key="filtro_stanza_command"  # <--- Nome nuovo e unico!
                 )
-
             # Creiamo il DataFrame filtrato
             if stanza_scelta != "Tutte le stanze":
                 df_visualizzazione = df_tutto[df_tutto['stanza'] == stanza_scelta].copy()
