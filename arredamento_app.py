@@ -619,12 +619,31 @@ else:
             conf = df_reali['Importo Totale'].sum()
             # Il PAGATO guarda tutto (anche il valore degli omaggi se inserito)
             pag = df_r['Versato'].sum()
+
             # Box metriche che si aggiornano in tempo reale
             m1, m2, m3, m4 = st.columns(4)
             m1.markdown(f'<div class="metric-card">BUDGET<div class="metric-value">{bud:,.0f}€</div></div>', unsafe_allow_html=True)
             m2.markdown(f'<div class="metric-card">CONFERMATO<div class="metric-value">{conf:,.0f}€</div></div>', unsafe_allow_html=True)
             m3.markdown(f'<div class="metric-card">PAGATO<div class="metric-value">{pag:,.0f}€</div></div>', unsafe_allow_html=True)
             m4.markdown(f'<div class="metric-card">DISPONIBILE<div class="metric-value">{bud-conf:,.0f}€</div></div>', unsafe_allow_html=True)
+            
+            # --- PROGRESS BAR DEL BUDGET ---
+            st.markdown("---") # Una linea sottile di separazione
+            
+            # Calcoliamo la percentuale (evitando divisioni per zero)
+            percentuale_uso = min(conf / bud, 1.0) if bud > 0 else 0
+            
+            # Mostriamo la percentuale con un bel font
+            st.write(f"📊 **Utilizzo Budget:** {percentuale_uso:.1%}")
+            
+            # La barra di avanzamento
+            st.progress(percentuale_uso)
+
+            # Se superi il 90%, aggiungiamo un piccolo alert visivo
+            if percentuale_uso >= 0.9 and percentuale_uso <= 1.0:
+                st.warning("⚠️ Attenzione, sei quasi al limite del budget!")
+            elif percentuale_uso > 1.0:
+                st.error(f"🚨 Budget superato di {(conf - bud):,.2f}€!")
 
             st.subheader("🗓️ Scadenzario")
             sc = df_r[df_r['Data Scadenza'].notna()].copy()
