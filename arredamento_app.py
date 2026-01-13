@@ -242,7 +242,13 @@ else:
         st.markdown(f'<div class="main-header"><h1>Amministrazione e Flussi</h1><p>Proprietà {nome_prop}</p></div>', unsafe_allow_html=True)
         
         # Recupero dati dal nuovo tavolo Contabilità
-        res_cont = sb.table("contabilita").select("*").order("data_movimento", desc=True).execute()
+        #res_cont = sb.table("contabilita").select("*").order("data_movimento", desc=True).execute()
+        # Recupero dati dal tavolo Contabilità con ordinamento preciso 🎯
+        res_cont = sb.table("contabilita") \
+            .select("*") \
+            .order("data_movimento", desc=True) \
+            .order("created_at", desc=True) \
+            .execute()
         df_cont = pd.DataFrame(res_cont.data)
 
         # Metriche
