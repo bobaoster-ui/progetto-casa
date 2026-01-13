@@ -694,9 +694,12 @@ else:
                 lambda row: "🎁 S" if row.get('Sconto %', 0) == 100 else "", 
                 axis=1
             )
+            # --- ORDINAMENTO E VISUALIZZAZIONE ---
+            # Ordiniamo il dataframe: prima per stanza, poi per descrizione articolo
+            df_display = df_r.sort_values(by=['stanza', 'DV'])
             # --- 2. AGGIUNGIAMO 'Omaggio' NELLA LISTA DELLE COLONNE DA MOSTRARE ---
             c_t.dataframe(
-                df_r[['stanza', 'DV', 'Omaggio', 'Importo Totale', 'Versato']], 
+                df_display[['stanza', 'DV', 'Omaggio', 'Importo Totale', 'Versato']], 
                 use_container_width=True, 
                 hide_index=True
             )
