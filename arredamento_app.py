@@ -700,6 +700,11 @@ else:
                     p.cell(120, 10, f'TOTALE GENERALE PROPRIETÀ {nome_prop.upper()}', 1, 0, 'R', 1)
                     p.cell(35,10,f"{t_i:,.2f} ",1,0,'R',1)
                     p.cell(35,10,f"{t_v:,.2f} ",1,1,'R',1)
+                    # --- NOTA DI AVVERTIMENTO ---
+                    p.ln(2) # Un po' di spazio
+                    p.set_font('Arial', 'I', 8) # Font Italico e più piccolo
+                    p.set_text_color(100, 100, 100) # Grigio scuro per non appesantire
+                    p.cell(0, 5, "* Il totale della colonna 'Totali' somma solo le righe non soggette ad Omaggio.", 0, 1, 'L')
                     st.download_button("📥 Scarica PDF", bytes(p.output(dest='S')), "Report.pdf")
 
             # --- 1. CREIAMO LA COLONNA OMAGGIO NEL DATAFRAME ---
