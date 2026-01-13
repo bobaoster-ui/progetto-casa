@@ -86,12 +86,12 @@ def genera_pdf_riepilogo(nome_ordine, df_f, tot, pagato, residuo):
 
     # Box Sintesi Economica
     pdf.set_fill_color(240, 240, 240)
-    pdf.set_font("Arial", "B", 12)
+    pdf.set_font("Arial", "B", 11)
     pdf.cell(60, 10, "Totale Impegnato", 1, 0, "C", True)
     pdf.cell(60, 10, "Totale Pagato", 1, 0, "C", True)
     pdf.cell(70, 10, "Residuo da Saldare", 1, 1, "C", True)
     
-    pdf.set_font("Arial", "", 12)
+    pdf.set_font("Arial", "", 11)
     pdf.cell(60, 10, f"Euro {tot:,.2f}", 1, 0, "C")
     pdf.cell(60, 10, f"Euro {pagato:,.2f}", 1, 0, "C")
     pdf.set_text_color(200, 0, 0) if residuo > 0 else pdf.set_text_color(0, 150, 0)
@@ -99,17 +99,17 @@ def genera_pdf_riepilogo(nome_ordine, df_f, tot, pagato, residuo):
     
     pdf.ln(10)
     pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", "B", 11)
+    pdf.set_font("Arial", "B", 10)
     pdf.cell(0, 10, "Dettaglio Movimenti:", ln=True)
 
     # Tabella Movimenti
-    pdf.set_font("Arial", "B", 10)
+    pdf.set_font("Arial", "B", 8)
     pdf.cell(30, 8, "Data", 1, 0, "C", True)
     pdf.cell(30, 8, "Tipo", 1, 0, "C", True)
     pdf.cell(90, 8, "Descrizione", 1, 0, "C", True)
     pdf.cell(40, 8, "Importo", 1, 1, "C", True)
 
-    pdf.set_font("Arial", "", 9)
+    pdf.set_font("Arial", "", 8)
     for _, row in df_f.iterrows():
         imp = row['dare'] if row['tipo'] == 'Ordine' else row['avere']
 # 2. Formatti la data in formato italiano gg/mm/aaaa
