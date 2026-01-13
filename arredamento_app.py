@@ -685,6 +685,20 @@ else:
                     p.set_font('Arial','',9); p.set_text_color(0,0,0)
                     
                     for _, r in df_pdf_ordinato.iterrows():
+                        # --- CONTROLLO SALTO PAGINA ---
+                        if p.get_y() > 250: 
+                            p.add_page()
+                            # Fondamentale: reimposta lo stile per l'intestazione
+                            p.set_font('Arial', 'B', 10)
+                            p.set_fill_color(200, 220, 255) # Il tuo azzurro/grigio delle testate
+                            p.cell(30,10,'Stanza',1,0,'C',1)
+                            p.cell(75,10,'Articolo',1,0,'C',1)
+                            p.cell(15,10,'OMG',1,0,'C',1)
+                            p.cell(35,10,'Totale',1,0,'C',1)
+                            p.cell(35,10,'Versato',1,1,'C',1)
+                            # E resetta lo stile per il contenuto delle righe
+                            p.set_font('Arial', '', 9)
+                            p.set_text_color(0, 0, 0)
                         reg_val = "S" if r.get('Sconto %', 0) == 100 else ""
                         y = p.get_y()
                         
