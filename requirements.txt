@@ -4,3 +4,4 @@ xlsxwriter
 fpdf2
 supabase
 streamlit-quill
+matplotlib
