@@ -611,9 +611,14 @@ else:
         if not df_all.empty:
             # Consideriamo solo gli acquisti confermati ('S')
             df_r = df_all[df_all['Acquista S/N'].str.upper().str.strip() == 'S'].copy()
-            
-            conf, pag = df_r['Importo Totale'].sum(), df_r['Versato'].sum()
-            
+            # 2. NOVITÀ: Creiamo un dataframe filtrato che esclude gli omaggi (Sconto < 100)
+            # Questo serve per calcolare quanto devi pagare TU
+            df_reali = df_r[df_r['Sconto %'] < 100]
+            # 3. Calcoliamo i totali con la nuova logica:
+            # Il CONFERMATO guarda solo le spese reali
+            conf = df_reali['Importo Totale'].sum()
+            # Il PAGATO guarda tutto (anche il valore degli omaggi se inserito)
+            pag = df_r['Versato'].sum()
             # Box metriche che si aggiornano in tempo reale
             m1, m2, m3, m4 = st.columns(4)
             m1.markdown(f'<div class="metric-card">BUDGET<div class="metric-value">{bud:,.0f}€</div></div>', unsafe_allow_html=True)
@@ -677,7 +682,8 @@ else:
 
                     # --- TOTALI (Anche questi a destra per coerenza) ---
                     p.ln(2); p.set_font('Arial','B',10); p.set_fill_color(220,220,220)
-                    t_i = df_r['Importo Totale'].sum(); t_v = df_r['Versato'].sum()
+                    t_i = df_reali['Importo Totale'].sum() # Totale spese reali
+                    t_v = df_r['Versato'].sum()
                     # Nel calcolo dei totali in fondo al PDF
                     p.cell(120, 10, f'TOTALE GENERALE PROPRIETÀ {nome_prop.upper()}', 1, 0, 'R', 1)
                     p.cell(35,10,f"{t_i:,.2f} ",1,0,'R',1)
