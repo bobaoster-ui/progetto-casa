@@ -244,10 +244,12 @@ else:
         # Recupero dati dal nuovo tavolo Contabilità
         #res_cont = sb.table("contabilita").select("*").order("data_movimento", desc=True).execute()
         # Recupero dati dal tavolo Contabilità con ordinamento preciso 🎯
+        # mettendo a created_at il flag=false viene messo nell'ordine di data creazione
+        # se mettessi true lo metterebbe in ordine inverso
         res_cont = sb.table("contabilita") \
             .select("*") \
             .order("data_movimento", desc=True) \
-            .order("created_at", desc=True) \
+            .order("created_at", desc=False) \
             .execute()
         df_cont = pd.DataFrame(res_cont.data)
 
