@@ -10,6 +10,15 @@ import io  # <--- AGGIUNGI SOLO QUESTO
 import os
 from streamlit_quill import st_quill
 
+def safe_float(value):
+    """Converte un valore in float in modo sicuro, restituendo 0.0 se fallisce."""
+    try:
+        if value is None or pd.isna(value):
+            return 0.0
+        return float(value)
+    except:
+        return 0.0
+
 # --- SICUREZZA ---
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
     st.error("⚠️ LICENZA NON TROVATA"); st.stop()
@@ -1019,28 +1028,33 @@ else:
                         righe_esistenti = []
 
                         for riga in dati_finali:
-                            # 1. RECUPERO VALORI (Nomi esatti dallo schema SQL)
-                            p_pieno = float(riga.get('prezzo_pieno') or 0)
-                            s_percento = float(riga.get('sconto_perc') or 0) # Da schema: sconto_perc
-                            qta = float(riga.get('acquistato') or 1)         # Da schema: acquistato
-                            costo_u = float(riga.get('costo') or 0)          # Da schema: costo
+                            # --- 1. RECUPERO VALORI SICURO ---
+                            p_pieno     = safe_float(riga.get('prezzo_pieno'))
+                            s_percento  = safe_float(riga.get('sconto_perc'))
+                            qta         = safe_float(riga.get('acquistato')) or 1.0
+                            costo_u_man = safe_float(riga.get('costo')) 
 
-                            # 2. LOGICA DI CALCOLO RIGOROSA
-                            if s_percento >= 99.0:
-                                riga['importo_totale'] = 0.0
+                            # --- 2. LOGICA DI CALCOLO UNIFICATA (Omaggi e Manuale) ---
+                            if s_percento >= 99.0 and p_pieno > 0:
+                                # Caso OMAGGIO (Sconto totale)
+                                costo_u = 0.0
                                 riga['sconto_perc'] = 100.0
                             elif p_pieno > 0:
-                                nuovo_costo = p_pieno * (1 - (s_percento / 100))
-                                riga['costo'] = nuovo_costo
-                                riga['importo_totale'] = nuovo_costo * qta
+                                # Caso SCONTO STANDARD
+                                costo_u = p_pieno * (1 - (s_percento / 100))
                             else:
-                                riga['importo_totale'] = costo_u * qta
+                                # Caso COSTO MANUALE (p_pieno è 0 o vuoto)
+                                costo_u = costo_u_man
 
-                            # 3. GESTIONE ID (Serial - Auto-incremento)
+                            # --- 3. AGGIORNAMENTO DATI RIGA PER SUPABASE ---
+                            riga['costo'] = costo_u
+                            riga['importo_totale'] = costo_u * qta
+                            riga['acquistato'] = qta # Assicuriamoci che anche la qta sia salvata
+
+                            # --- 4. GESTIONE ID (Nuove righe vs Esistenti) ---
                             val_id = riga.get('id')
-                            # Se l'ID è 0, None o NaN, la trattiamo come riga NUOVA
                             if val_id is None or pd.isna(val_id) or str(val_id) == '0' or val_id == 0:
-                                riga.pop('id', None) # Fondamentale per attivare il 'serial' di Supabase
+                                riga.pop('id', None) 
                                 nuove_righe.append(riga)
                             else:
                                 righe_esistenti.append(riga)
@@ -1053,7 +1067,7 @@ else:
                             sb.table("arredamento").upsert(righe_esistenti, on_conflict="id").execute()
 
                         st.balloons()
-                        st.success(f"**Proprietà** Jacopo aggiornata con successo! ✅")
+                        st.success(f"**Proprietà** aggiornata con successo! ✅")
                         time.sleep(1)
                         st.rerun()
 
