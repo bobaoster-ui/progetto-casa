@@ -18,6 +18,45 @@ def safe_float(value):
         return float(value)
     except:
         return 0.0
+def rendering_galleria(url_lista):
+    if not url_lista:
+        st.warning("Nessun documento collegato a questo elemento.")
+        return
+
+    # Se i link sono salvati come stringa separata da virgole, li dividiamo
+    links = url_lista.split(',') if isinstance(url_lista, str) else [url_lista]
+    
+    # Creiamo le colonne (es. 3 miniature per riga)
+    cols = st.columns(3)
+    
+    for i, link in enumerate(links):
+        link = link.strip()
+        with cols[i % 3]:
+            estensione = link.split('.')[-1].lower().split('?')[0] # Gestisce anche i parametri URL
+            
+            if estensione in ['jpg', 'jpeg', 'png', 'webp']:
+                st.image(link, use_container_width=True)
+                st.caption(f"Foto {i+1}")
+            elif estensione == 'pdf':
+                st.markdown(f"📄 **Documento PDF**")
+                st.link_button(f"Apri PDF {i+1}", link)
+            else:
+                st.link_button(f"Vedi File {i+1}", link)
+
+def mostra_documento(url):
+    if not url:
+        st.write("Nessun documento caricato")
+        return
+    
+    estensione = url.split('.')[-1].lower()
+    
+    if estensione in ['jpg', 'jpeg', 'png', 'webp']:
+        st.image(url, caption="Anteprima Documento", use_container_width=True)
+    elif estensione == 'pdf':
+        st.info("📄 Documento PDF disponibile")
+        st.markdown(f'<a href="{url}" target="_blank">Apri il PDF in una nuova scheda</a>', unsafe_allow_html=True)
+    else:
+        st.link_button("Scarica Documento", url)
 
 # --- SICUREZZA ---
 if st.secrets.get("sicurezza", {}).get("sigillo") != "ATTIVATO":
@@ -796,43 +835,50 @@ else:
                             }
                         </style>
                     """, unsafe_allow_html=True)
-
-                    st.write("---")
-                    # Intestazione
-                    h1, h2, h3 = st.columns([6, 1, 1])
-                    h1.caption("DESCRIZIONE")
-                    h2.caption("VEDI")
-                    h3.caption("ELIM")
-
+                    # Nuova Intestazione con spazio per l'anteprima
+                    h1, h2, h3, h4 = st.columns([1.5, 4.5, 1, 1])
+                    h1.caption("ANTEPRIMA")
+                    h2.caption("DESCRIZIONE")
+                    h3.caption("VEDI")
+                    h4.caption("ELIM")
                     for d in docs.data:
-                        c1, c2, c3 = st.columns([6, 1, 1])
+                        c1, c2, c3, c4 = st.columns([1.5, 4.5, 1, 1])
+                        
+                        url = d['link_file']
+                        estensione = url.split('.')[-1].lower().split('?')[0]
 
                         with c1:
-                            st.markdown(f"<div class='small-text'>🔹 {d['nome_documento']}</div>", unsafe_allow_html=True)
+                            # --- LOGICA ANTEPRIMA ---
+                            if estensione in ['jpg', 'jpeg', 'png', 'webp']:
+                                st.image(url, width=60)
+                            elif estensione == 'pdf':
+                                st.markdown("### 📄")
+                            else:
+                                st.markdown("### 📁")
 
                         with c2:
-                            # Link testuale invece del bottone
-                            st.markdown(f"[:eye: Apri]({d['link_file']})")
+                            st.markdown(f"<div style='margin-top: 15px;' class='small-text'>🔹 {d['nome_documento']}</div>", unsafe_allow_html=True)
 
                         with c3:
-                            # Bottone "invisibile" che sembra testo
-                            # --- MODIFICA: LOGICA DI CONTROLLO ---
-                            if st.button("🗑️ Canc", key=f"del_{d['id']}", help="Elimina documento"):
-                                # CONTROLLO SICUREZZA
+                            st.markdown(f"<div style='margin-top: 15px;'><a href='{url}' target='_blank'>👁️ Apri</a></div>", unsafe_allow_html=True)
+
+                        with c4:
+                            st.write("") # Spazio per allineamento
+                            if st.button("🗑️", key=f"del_{d['id']}", help="Elimina documento"):
                                 if not conferma_canc_doc:
-                                    st.error("⚠️ Spunta la casella sopra per autorizzare!")
-                                    st.stop() # Blocca e tiene il messaggio a video
+                                    st.error("⚠️ Spunta la casella!")
                                 else:
                                     try:
-                                        # Eliminazione Database
+                                        # 1. Eliminazione dal Database
                                         sb.table("documenti_arredo").delete().eq("id", d['id']).execute()
                                         
-                                        # Eliminazione Storage (Ottimo che l'avevi già prevista!)
+                                        # 2. Eliminazione dallo Storage
+                                        # Estraiamo il nome file dall'URL (quello dopo l'ultimo slash)
                                         path_to_remove = d['link_file'].split('/')[-1]
                                         full_path = f"{id_parent}/{path_to_remove}"
                                         sb.storage.from_("documenti_proprieta").remove([full_path])
                                         
-                                        st.success("Rimosso!") # Successo invece di toast per visibilità
+                                        st.success("Rimosso!")
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Errore: {e}")
