@@ -656,32 +656,44 @@ else:
                     p.cell(35,10,'Totale',1,0,'C',1)
                     p.cell(35,10,'Versato',1,1,'C',1)
                     
-                    p.set_font('Arial','',9); p.set_text_color(0,0,0)
-                    for _, r in df_r.iterrows():
-                        reg_val = "S" if r.get('Sconto %', 0) == 100 else ""
-                        
-                        y=p.get_y()
-                        # Articolo
-                        p.set_xy(40,y)
-                        p.multi_cell(75,10,str(r['DV']).encode('latin-1','replace').decode('latin-1'),1)
-                        h=max(p.get_y()-y,10)
-                        
-                        # Stanza
-                        p.set_xy(10,y)
-                        p.cell(30,h,str(r['stanza']),1,0,'C')
-                        
-                        # OMG
-                        p.set_xy(115,y)
-                        p.cell(15,h,reg_val,1,0,'C')
-                        
-                        # --- IMPORTI ALLINEATI A DESTRA ('R') ---
-                        p.set_xy(130,y)
-                        p.cell(35,h,f"{r['Importo Totale']:,.2f} ",1,0,'R') # Spazio dopo il numero per distanziarlo dal bordo
-                        p.set_xy(165,y)
-                        p.cell(35,h,f"{r['Versato']:,.2f} ",1,1,'R')
+                    # --- ORDINAMENTO PER IL PDF ---
+                    # Creiamo una versione ordinata del dataframe filtrato
+                    # --- ORDINAMENTO E PREPARAZIONE DATI ---
+                    df_pdf_ordinato = df_r.sort_values(by=['stanza', 'DV'])
+                    t_i = df_reali['Importo Totale'].sum() # Totale che esclude gli omaggi
+                    t_v = df_r['Versato'].sum() # Totale versato effettivo
 
-                    # --- TOTALI (Anche questi a destra per coerenza) ---
-                    p.ln(2); p.set_font('Arial','B',10); p.set_fill_color(220,220,220)
+                    p.set_font('Arial','',9); p.set_text_color(0,0,0)
+                    
+                    for _, r in df_pdf_ordinato.iterrows():
+                        reg_val = "S" if r.get('Sconto %', 0) == 100 else ""
+                        y = p.get_y()
+                        
+                        # 1. Disegniamo prima l'Articolo (quello che comanda l'altezza)
+                        p.set_xy(40, y)
+                        p.multi_cell(75, 10, str(r['DV']).encode('latin-1','replace').decode('latin-1'), 1)
+                        
+                        # Calcoliamo l'altezza effettiva della riga
+                        h = max(p.get_y() - y, 10)
+                        
+                        # 2. Torniamo su e disegniamo la Stanza
+                        p.set_xy(10, y)
+                        p.cell(30, h, str(r['stanza']), 1, 0, 'C')
+                        
+                        # 3. OMG (Sconto 100%)
+                        p.set_xy(115, y)
+                        p.cell(15, h, reg_val, 1, 0, 'C')
+                        
+                        # 4. Importi allineati a destra
+                        p.set_xy(130, y)
+                        p.cell(35, h, f"{r['Importo Totale']:,.2f} ", 1, 0, 'R')
+                        
+                        p.set_xy(165, y)
+                        p.cell(35, h, f"{r['Versato']:,.2f} ", 1, 1, 'R')
+
+                    # --- RIGA TOTALI FINALI ---
+                    p.ln(2); p.set_font('Arial', 'B', 10); p.set_fill_color(220, 220, 220)
+                    # Qui aggiungi le celle per t_i e t_v come già facevi   
                     t_i = df_reali['Importo Totale'].sum() # Totale spese reali
                     t_v = df_r['Versato'].sum()
                     # Nel calcolo dei totali in fondo al PDF
