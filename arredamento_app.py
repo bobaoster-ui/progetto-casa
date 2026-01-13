@@ -109,7 +109,7 @@ def genera_pdf_riepilogo(nome_ordine, df_f, tot, pagato, residuo):
     pdf.cell(90, 8, "Descrizione", 1, 0, "C", True)
     pdf.cell(40, 8, "Importo", 1, 1, "C", True)
 
-# ... (parte precedente del codice uguale) ...
+# ... La parte che segue formatta le celle in modalità multi linea e calcola altezza riquadri ...
 
     pdf.set_font("Arial", "", 8)
     for _, row in df_f.iterrows():
@@ -118,36 +118,38 @@ def genera_pdf_riepilogo(nome_ordine, df_f, tot, pagato, residuo):
         dt_obj = pd.to_datetime(row['data_movimento'])
         data_ita = dt_obj.strftime("%d/%m/%Y")
         
-        # Salviamo la posizione Y iniziale della riga
-        y_inizio = pdf.get_y()
+        # 1. Salviamo la posizione iniziale
+        x_start = pdf.get_x()
+        y_start = pdf.get_y()
         
-        # 1. Stampiamo le prime due celle (Data e Tipo)
-        pdf.cell(30, 8, data_ita, 1, 0, "C")
-        pdf.cell(30, 8, row['tipo'], 1, 0, "C")
+        # 2. Calcoliamo l'altezza necessaria per la descrizione senza stamparla ancora
+        # Usiamo una variabile temporanea per non spostare il cursore
+        testo_desc = str(row['descrizione'])
+        # Calcoliamo quante righe occuperà (approssimativo ma efficace)
+        # Oppure stampiamo e misuriamo come abbiamo fatto prima:
         
-        # 2. DESCRIZIONE MULTI-LINEA 🚀
-        # Salviamo la X attuale per la descrizione
-        x_desc = pdf.get_x()
+        pdf.set_xy(x_start + 60, y_start) # Ci spostiamo dove inizia la descrizione (30+30)
+        pdf.multi_cell(90, 8, testo_desc, border=1, align='L')
         
-        # Usiamo multi_cell per la descrizione (larghezza 90)
-        # Togliamo il [:50] così legge tutto il testo!
-        pdf.multi_cell(90, 8, str(row['descrizione']), 1, "L")
-        
-        # Recuperiamo la Y dopo la multi_cell per sapere quanto è diventata alta la riga
         y_fine = pdf.get_y()
-        altezza_riga = y_fine - y_inizio
+        altezza_riga = y_fine - y_start
         
-        # 3. IMPORTO (Dobbiamo tornare su per allinearlo alla riga)
-        pdf.set_xy(x_desc + 90, y_inizio)
-        pdf.cell(40, altezza_riga, f"Euro {imp:,.2f}", 1, 1, "R")
+        # 3. TORNIAMO INDIETRO e stampiamo Data, Tipo e Importo con l'altezza corretta
+        # Cella DATA
+        pdf.set_xy(x_start, y_start)
+        pdf.cell(30, altezza_riga, data_ita, border=1, ln=0, align='C')
         
-        # Opzionale: se la riga è diventata multi-linea, le celle precedenti 
-        # (Data e Tipo) rimarranno basse. Se vuoi che tutte le celle siano alte uguali, 
-        # dovremmo ridisegnarle, ma per ora questo sistema il troncamento!
+        # Cella TIPO
+        pdf.cell(30, altezza_riga, row['tipo'], border=1, ln=0, align='C')
         
-        # Riportiamo il cursore alla fine della riga per la prossima iterazione
+        # Saltiamo lo spazio della descrizione (già stampata)
+        pdf.set_x(x_start + 60 + 90)
+        
+        # Cella IMPORTO
+        pdf.cell(40, altezza_riga, f"Euro {imp:,.2f}", border=1, ln=1, align='R')
+        
+        # Assicuriamoci che il cursore sia alla fine della riga più alta
         pdf.set_y(y_fine)
-
     return pdf.output()
 
 # --- STILE ---
