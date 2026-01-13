@@ -109,19 +109,45 @@ def genera_pdf_riepilogo(nome_ordine, df_f, tot, pagato, residuo):
     pdf.cell(90, 8, "Descrizione", 1, 0, "C", True)
     pdf.cell(40, 8, "Importo", 1, 1, "C", True)
 
+# ... (parte precedente del codice uguale) ...
+
     pdf.set_font("Arial", "", 8)
     for _, row in df_f.iterrows():
         imp = row['dare'] if row['tipo'] == 'Ordine' else row['avere']
-# 2. Formatti la data in formato italiano gg/mm/aaaa
-        # Usiamo un controllo per sicurezza: se è già una data, la formattiamo, altrimenti la scriviamo così com'è
+        
         dt_obj = pd.to_datetime(row['data_movimento'])
         data_ita = dt_obj.strftime("%d/%m/%Y")
-        pdf.cell(30, 8, data_ita, 1, 0, "C") # <-- Usiamo data_ita qui
-#        pdf.cell(30, 8, str(row['data_movimento']), 1, 0, "C")
+        
+        # Salviamo la posizione Y iniziale della riga
+        y_inizio = pdf.get_y()
+        
+        # 1. Stampiamo le prime due celle (Data e Tipo)
+        pdf.cell(30, 8, data_ita, 1, 0, "C")
         pdf.cell(30, 8, row['tipo'], 1, 0, "C")
-        pdf.cell(90, 8, str(row['descrizione'])[:50], 1, 0, "L")
-        pdf.cell(40, 8, f"Euro {imp:,.2f}", 1, 1, "R")
-    
+        
+        # 2. DESCRIZIONE MULTI-LINEA 🚀
+        # Salviamo la X attuale per la descrizione
+        x_desc = pdf.get_x()
+        
+        # Usiamo multi_cell per la descrizione (larghezza 90)
+        # Togliamo il [:50] così legge tutto il testo!
+        pdf.multi_cell(90, 8, str(row['descrizione']), 1, "L")
+        
+        # Recuperiamo la Y dopo la multi_cell per sapere quanto è diventata alta la riga
+        y_fine = pdf.get_y()
+        altezza_riga = y_fine - y_inizio
+        
+        # 3. IMPORTO (Dobbiamo tornare su per allinearlo alla riga)
+        pdf.set_xy(x_desc + 90, y_inizio)
+        pdf.cell(40, altezza_riga, f"Euro {imp:,.2f}", 1, 1, "R")
+        
+        # Opzionale: se la riga è diventata multi-linea, le celle precedenti 
+        # (Data e Tipo) rimarranno basse. Se vuoi che tutte le celle siano alte uguali, 
+        # dovremmo ridisegnarle, ma per ora questo sistema il troncamento!
+        
+        # Riportiamo il cursore alla fine della riga per la prossima iterazione
+        pdf.set_y(y_fine)
+
     return pdf.output()
 
 # --- STILE ---
