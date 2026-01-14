@@ -17,11 +17,12 @@ def init_connection():
 supabase = init_connection()
 # Trova il percorso della cartella dove si trova il file app.py
 current_dir = os.path.dirname(__file__)
+# USIAMO LA "L" MAIUSCOLA COME SU GITHUB
 logo_path = os.path.join(current_dir, "Logo.png")
 
-# Carica il logo usando il percorso completo
-st.sidebar.image(logo_path, use_container_width=True)
-# --- MENU LATERALE ---
+# Carica il logo
+st.sidebar.image(logo_path, use_container_width=True)# --- MENU LATERALE ---
+
 with st.sidebar:
     st.title("🏥 Hub Salute")
     st.subheader("La mia Proprietà")
