@@ -546,24 +546,35 @@ else:
 
         # --- DASHBOARD GLOBALE ---
         st.write("### 📊 Riepilogo Totale Proprietà")
-        c1, c2, c3 = st.columns(3)
+        
+        # Passiamo a 4 colonne per far stare anche i regali 🎁
+        c1, c2, c3, c4 = st.columns(4)
 
         with c1:
             st.metric("Totale Arredi", f"{len(df_tutto)} pz")
 
         with c2:
-            # Troviamo la colonna costo (Costo o costo)
             col_costo = next((c for c in df_tutto.columns if c.lower() == 'costo'), None)
-            
             if col_costo:
-                # .fillna(0) è la magia: trasforma i valori vuoti (NaN) in 0
-                # Così l'errore "JSON compliant: nan" sparisce!
                 prezzi = pd.to_numeric(df_tutto[col_costo], errors='coerce').fillna(0)
                 st.metric("Valore Totale", f"€ {prezzi.sum():,.2f}")
             else:
-                st.metric("Valore Totale", "Colonna non trovata")
+                st.metric("Valore Totale", "N/A")
 
         with c3:
+            # --- NUOVA METRICA REGALI 🎁 ---
+            # Cerchiamo la colonna sconto (sconto_perc)
+            col_sconto = next((c for c in df_tutto.columns if c.lower() == 'sconto_perc'), None)
+            
+            if col_sconto and col_costo:
+                # Filtriamo gli articoli con sconto al 100%
+                regali = df_tutto[df_tutto[col_sconto] == 100]
+                valore_omaggi = pd.to_numeric(regali[col_costo], errors='coerce').fillna(0).sum()
+                st.metric("Valore Regali", f"€ {valore_omaggi:,.2f}", delta="Omaggi", delta_color="normal")
+            else:
+                st.metric("Valore Regali", "€ 0.00")
+
+        with c4:
             try:
                 res_docs = sb.table("documenti_arredo").select("id", count="exact").execute()
                 st.metric("Documenti", f"{res_docs.count if res_docs.count else 0} file")
@@ -571,7 +582,6 @@ else:
                 st.metric("Documenti", "0")
 
         st.divider()
-
         # --- RICERCA RAPIDA DOCUMENTI ---
         with st.expander("🔍 Cerca un documento in tutta la Proprietà"):
             cerca_doc = st.text_input("Inserisci il nome del file (es: fattura, progetto...):", key="search_global")
