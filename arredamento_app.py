@@ -942,16 +942,18 @@ else:
                     #  --- 2. GESTIONE DOCUMENTI (PLATINUM EDITION) ---
             st.markdown("---")
             with st.expander("📂 GESTIONE DOCUMENTI (Fatture, Scontrini, Garanzie)"):
-                # Creiamo la lista usando l'ID che abbiamo recuperato prima
-                opzioni_art = [tuple(x) for x in df[['id', 'Articolo']].values]
-                scelta = st.selectbox(
+                # --- NUOVO SISTEMA SEMPLIFICATO PER EVITARE L'ERRORE ---
+                nomi_articoli = df['Articolo'].tolist()
+                
+                scelta_nome = st.selectbox(
                     "Seleziona l'articolo a cui riferire il documento:",
-                    options=opzioni_art,
-                    format_func=lambda x: x[1],
+                    options=nomi_articoli,
                     key=f"sel_parent_doc_{sn}"
                 )
 
-                id_parent = scelta[0]
+                # Recuperiamo l'ID corrispondente dal dataframe
+                id_parent = df[df['Articolo'] == scelta_nome]['id'].values[0]
+                # -------------------------------------------------------
 
                 st.write("---")
                 st.subheader("📄 Documenti già presenti:")
