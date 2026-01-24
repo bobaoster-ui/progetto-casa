@@ -568,9 +568,14 @@ else:
             
             if col_sconto and col_costo:
                 # Filtriamo gli articoli con sconto al 100%
-                regali = df_tutto[df_tutto[col_sconto] == 100]
-                valore_omaggi = pd.to_numeric(regali[col_costo], errors='coerce').fillna(0).sum()
-                st.metric("Valore Regali", f"€ {valore_omaggi:,.2f}", delta="Omaggi", delta_color="normal")
+                # Query secca per non sbagliare mai (va direttamente su Supabase)
+                res_regali = sb.table("arredamento").select("importo_totale").eq("sconto_perc", 100).execute()
+                
+                # Calcoliamo la somma dai dati grezzi
+                valore_reale_regali = sum([row['importo_totale'] for row in res_regali.data])
+                
+                # Usiamo valore_reale_regali qui! 🎯
+                st.metric("Valore Regali", f"€ {valore_reale_regali:,.2f}", delta="Omaggi", delta_color="normal")
             else:
                 st.metric("Valore Regali", "€ 0.00")
 
