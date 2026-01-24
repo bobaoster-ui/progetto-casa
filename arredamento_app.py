@@ -943,11 +943,10 @@ else:
             st.markdown("---")
             with st.expander("📂 GESTIONE DOCUMENTI (Fatture, Scontrini, Garanzie)"):
                 # Creiamo la lista usando l'ID che abbiamo recuperato prima
-                opzioni_art = df[['id', 'Articolo']].values.tolist()
-
+                opzioni_art = [tuple(x) for x in df[['id', 'Articolo']].values]
                 scelta = st.selectbox(
                     "Seleziona l'articolo a cui riferire il documento:",
-                    opzioni_art,
+                    options=opzioni_art,
                     format_func=lambda x: x[1],
                     key=f"sel_parent_doc_{sn}"
                 )
