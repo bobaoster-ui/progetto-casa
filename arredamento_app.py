@@ -224,10 +224,13 @@ def genera_pdf_finale_separato(dati_query):
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(60, 10, "Area / Stanza", 1, 0, 'C', True)
-    pdf.cell(40, 10, "Acquisto (€)", 1, 0, 'C', True)
-    pdf.cell(40, 10, "Regali (€)", 1, 0, 'C', True)
-    pdf.cell(40, 10, "Totale (€)", 1, 1, 'C', True)
-    
+    # Fai lo stesso nei cicli dove stampi i valori, 
+    # ma lì avevi già usato la f-string senza il simbolo €, giusto?
+    # Assicurati che nelle celle non ci sia il carattere €
+    # SOSTITUISCI LE RIGHE CHE DANNO ERRORE:
+    pdf.cell(40, 10, "Acquisto (Euro)", 1, 0, 'C', True)  # Scrivi Euro invece di €
+    pdf.cell(40, 10, "Regali (Euro)", 1, 0, 'C', True)
+    pdf.cell(40, 10, "Totale (Euro)", 1, 1, 'C', True)
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", '', 10)
 
@@ -284,8 +287,8 @@ def genera_pdf_finale_separato(dati_query):
     pdf.cell(40, 12, f"{tot_gen_reg:,.2f}", 1, 0, 'R', True)
     pdf.cell(40, 12, f"{(tot_gen_acq + tot_gen_reg):,.2f}", 1, 1, 'R', True)
 
-    return pdf.output(dest='S').encode('latin-1')
-
+    # Sostituisci il ritorno della funzione con questo:
+    return pdf.output(dest='S') # Restituisce una stringa/byte compatibile
 
 # --- STILE ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -709,9 +712,9 @@ else:
                 pdf_bytes = genera_pdf_finale_separato(report_data.to_dict('records'))
                 
                 st.download_button(
-                    label="⬇️ Scarica il Report PDF",
-                    data=pdf_bytes,
-                    file_name="Analisi_Investimento_Proprietà.pdf",
+                    label="💾 Clicca qui per scaricare",
+                    data=bytes(pdf_bytes, 'latin-1') if isinstance(pdf_bytes, str) else pdf_bytes,
+                    file_name=f"Analisi_Proprieta_{datetime.now().strftime('%Y%m%d')}.pdf",
                     mime="application/pdf"
                 )
 
