@@ -205,6 +205,88 @@ def genera_pdf_riepilogo(nome_ordine, df_f, tot, pagato, residuo):
         pdf.set_y(y_fine)
     return pdf.output()
 
+# 1. LA FUNZIONE DI GENERAZIONE (Il "Motore" che separa i blocchi)
+def genera_pdf_finale_separato(dati_query):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Intestazione Professionale
+    pdf.set_font("Arial", 'B', 16)
+    pdf.set_text_color(41, 128, 185)
+    pdf.cell(0, 10, "PROPRIETÀ - ANALISI FINALE INVESTIMENTO", ln=True)
+    pdf.set_font("Arial", 'I', 9)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 5, f"Documento ufficiale - {datetime.now().strftime('%d/%m/%Y')}", ln=True)
+    pdf.ln(10)
+
+    # Header Tabella
+    pdf.set_fill_color(41, 128, 185)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(60, 10, "Area / Stanza", 1, 0, 'C', True)
+    pdf.cell(40, 10, "Acquisto (€)", 1, 0, 'C', True)
+    pdf.cell(40, 10, "Regali (€)", 1, 0, 'C', True)
+    pdf.cell(40, 10, "Totale (€)", 1, 1, 'C', True)
+    
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", '', 10)
+
+    # --- LOGICA DI SEPARAZIONE ---
+    tot_acq_arr, tot_reg_arr = 0, 0
+    # Arredi = tutto tranne 'Lavori'
+    arredi = [r for r in dati_query if str(r['stanza']).strip().upper() != 'LAVORI']
+    # Lavori = solo la riga 'Lavori'
+    lavori_riga = next((r for r in dati_query if str(r['stanza']).strip().upper() == 'LAVORI'), None)
+
+    # Ciclo Arredi
+    for r in arredi:
+        acq, reg = float(r['Acquisto']), float(r['Regali'])
+        tot_acq_arr += acq
+        tot_reg_arr += reg
+        pdf.cell(60, 8, f"  {str(r['stanza']).capitalize()}", 1, 0, 'L')
+        pdf.cell(40, 8, f"{acq:,.2f}", 1, 0, 'R')
+        pdf.cell(40, 8, f"{reg:,.2f}", 1, 0, 'R')
+        pdf.cell(40, 8, f"{(acq+reg):,.2f}", 1, 1, 'R')
+
+    # SOTTO-TOTALE ARREDI (Esattamente come il tuo Excel)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.set_fill_color(240, 240, 240)
+    pdf.cell(60, 10, " TOTALE ARREDAMENTI", 1, 0, 'L', True)
+    pdf.cell(40, 10, f"{tot_acq_arr:,.2f}", 1, 0, 'R', True)
+    pdf.cell(40, 10, f"{tot_reg_arr:,.2f}", 1, 0, 'R', True)
+    pdf.cell(40, 10, f"{(tot_acq_arr + tot_reg_arr):,.2f}", 1, 1, 'R', True)
+    pdf.ln(6)
+
+    # SEZIONE LAVORI
+    if lavori_riga:
+        acq_lav, reg_lav = float(lavori_riga['Acquisto']), float(lavori_riga['Regali'])
+        pdf.set_font("Arial", 'B', 10)
+        pdf.cell(0, 8, "Servizi Professionali:", ln=True)
+        pdf.set_font("Arial", '', 10)
+        pdf.cell(60, 8, "  Lavori e Installazioni", 1, 0, 'L')
+        pdf.cell(40, 8, f"{acq_lav:,.2f}", 1, 0, 'R')
+        pdf.cell(40, 8, f"{reg_lav:,.2f}", 1, 0, 'R')
+        pdf.cell(40, 8, f"{(acq_lav + reg_lav):,.2f}", 1, 1, 'R')
+        pdf.ln(10)
+    else:
+        acq_lav, reg_lav = 0, 0
+
+    # --- TOTALE GENERALE (Il Gran Finale) ---
+    pdf.set_font("Arial", 'B', 12)
+    pdf.set_fill_color(41, 128, 185)
+    pdf.set_text_color(255, 255, 255)
+    
+    tot_gen_acq = tot_acq_arr + acq_lav
+    tot_gen_reg = tot_reg_arr + reg_lav
+    
+    pdf.cell(60, 12, " TOTALE GENERALE", 1, 0, 'L', True)
+    pdf.cell(40, 12, f"{tot_gen_acq:,.2f}", 1, 0, 'R', True)
+    pdf.cell(40, 12, f"{tot_gen_reg:,.2f}", 1, 0, 'R', True)
+    pdf.cell(40, 12, f"{(tot_gen_acq + tot_gen_reg):,.2f}", 1, 1, 'R', True)
+
+    return pdf.output(dest='S').encode('latin-1')
+
+
 # --- STILE ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
 bc, cc, tc = ("#0e1117", "#1d2129", "#ffffff") if st.session_state.dark_mode else ("#f8f9fc", "#ffffff", "#1f2937")
@@ -606,6 +688,32 @@ else:
                 else:
                     st.info("Nessun documento trovato con questo nome.")
         st.divider()
+
+        # 2. IL TASTO NEL RIEPILOGO
+        st.write("### 📄 Export Report per la Proprietà")
+        if st.button("📊 Genera PDF Riepilogo Finale", use_container_width=True):
+            # Esegui la query (usa il metodo che preferisci tra raw_sql o rpc)
+            # Qui simulo il risultato della query per chiarezza
+            res = sb.table("arredamento").select("stanza, importo_totale, sconto_perc").eq("acquista_sn", "S").execute()
+            
+            if res.data:
+                # Trasformiamo i dati grezzi nel formato aggregato richiesto (Simulando la tua query SQL)
+                df_temp = pd.DataFrame(res.data)
+                df_temp['Acquisto'] = df_temp.apply(lambda x: x['importo_totale'] if x['sconto_perc'] < 100 else 0, axis=1)
+                df_temp['Regali'] = df_temp.apply(lambda x: x['importo_totale'] if x['sconto_perc'] == 100 else 0, axis=1)
+                
+                report_data = df_temp.groupby('stanza').agg({'Acquisto': 'sum', 'Regali': 'sum'}).reset_index()
+                report_data['Totale Stanza'] = report_data['Acquisto'] + report_data['Regali']
+                
+                # Generiamo e scarichiamo
+                pdf_bytes = genera_pdf_finale_separato(report_data.to_dict('records'))
+                
+                st.download_button(
+                    label="⬇️ Scarica il Report PDF",
+                    data=pdf_bytes,
+                    file_name="Analisi_Investimento_Proprietà.pdf",
+                    mime="application/pdf"
+                )
 
         # --- NOVITÀ: FILTRO DINAMICO ---
         if not df_tutto.empty:
