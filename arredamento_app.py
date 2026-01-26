@@ -288,7 +288,7 @@ def genera_pdf_finale_separato(dati_query):
     pdf.cell(40, 12, f"{(tot_gen_acq + tot_gen_reg):,.2f}", 1, 1, 'R', True)
 
     # Sostituisci il ritorno della funzione con questo:
-    return pdf.output(dest='S') # Restituisce una stringa/byte compatibile
+    return pdf.output()
 
 # --- STILE ---
 if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
@@ -695,29 +695,38 @@ else:
         # 2. IL TASTO NEL RIEPILOGO
         st.write("### 📄 Export Report per la Proprietà")
         if st.button("📊 Genera PDF Riepilogo Finale", use_container_width=True):
-            # Esegui la query (usa il metodo che preferisci tra raw_sql o rpc)
-            # Qui simulo il risultato della query per chiarezza
             res = sb.table("arredamento").select("stanza, importo_totale, sconto_perc").eq("acquista_sn", "S").execute()
             
             if res.data:
-                # Trasformiamo i dati grezzi nel formato aggregato richiesto (Simulando la tua query SQL)
-                df_temp = pd.DataFrame(res.data)
-                df_temp['Acquisto'] = df_temp.apply(lambda x: x['importo_totale'] if x['sconto_perc'] < 100 else 0, axis=1)
-                df_temp['Regali'] = df_temp.apply(lambda x: x['importo_totale'] if x['sconto_perc'] == 100 else 0, axis=1)
-                
-                report_data = df_temp.groupby('stanza').agg({'Acquisto': 'sum', 'Regali': 'sum'}).reset_index()
-                report_data['Totale Stanza'] = report_data['Acquisto'] + report_data['Regali']
-                
-                # Generiamo e scarichiamo
-                pdf_bytes = genera_pdf_finale_separato(report_data.to_dict('records'))
-                
-                st.download_button(
-                    label="💾 Clicca qui per scaricare",
-                    data=bytes(pdf_bytes, 'latin-1') if isinstance(pdf_bytes, str) else pdf_bytes,
-                    file_name=f"Analisi_Proprieta_{datetime.now().strftime('%Y%m%d')}.pdf",
-                    mime="application/pdf"
-                )
+                try:
+                    # 1. Preparazione dati con Pandas
+                    df_temp = pd.DataFrame(res.data)
+                    df_temp['Acquisto'] = df_temp.apply(lambda x: x['importo_totale'] if x['sconto_perc'] < 100 else 0, axis=1)
+                    df_temp['Regali'] = df_temp.apply(lambda x: x['importo_totale'] if x['sconto_perc'] == 100 else 0, axis=1)
+                    
+                    report_data = df_temp.groupby('stanza').agg({'Acquisto': 'sum', 'Regali': 'sum'}).reset_index()
+                    report_data['Totale Stanza'] = report_data['Acquisto'] + report_data['Regali']
+                    
+                    # 2. Generazione PDF (una sola volta!)
+                    pdf_raw = genera_pdf_finale_separato(report_data.to_dict('records'))
+                    
+                    # 3. Conversione in bytes
+                    pdf_final = bytes(pdf_raw) 
+                    
+                    # 4. Tasto di Download
+                    st.download_button(
+                        label="💾 Clicca qui per scaricare il Report",
+                        data=pdf_final,
+                        file_name=f"Analisi_Proprieta_{datetime.now().strftime('%Y%m%d')}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                    st.success("✅ Report della Proprietà pronto per il download!")
 
+                except Exception as e:
+                    st.error(f"Errore durante la creazione del PDF: {e}")
+            else:
+                st.warning("⚠️ Non ci sono dati con 'Acquista = S' per generare il report.")
         # --- NOVITÀ: FILTRO DINAMICO ---
         if not df_tutto.empty:
             stanze_disponibili = sorted(df_tutto['stanza'].unique().tolist())
