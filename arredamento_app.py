@@ -693,41 +693,47 @@ else:
         st.divider()
 
         # 2. IL TASTO NEL RIEPILOGO
-        st.write("### 📄 Export Report per la Proprietà")
-        if st.button("📊 Genera PDF Riepilogo Finale", use_container_width=True):
+        st.write("### 📄 Report Avanzato")
+        if st.button("📊 Genera Analisi Investimento (PDF)", use_container_width=True):
+            # Recuperiamo tutti i dati per la Proprietà
             res = sb.table("arredamento").select("stanza, importo_totale, sconto_perc").eq("acquista_sn", "S").execute()
             
             if res.data:
                 try:
-                    # 1. Preparazione dati con Pandas
                     df_temp = pd.DataFrame(res.data)
+                    
+                    # TRUCCO DEL SOCIO: Convertiamo in numeri per non perdere i dati per strada
+                    df_temp['importo_totale'] = pd.to_numeric(df_temp['importo_totale'], errors='coerce').fillna(0)
+                    df_temp['sconto_perc'] = pd.to_numeric(df_temp['sconto_perc'], errors='coerce').fillna(0)
+
+                    # Separiamo Acquisto da Regalo
                     df_temp['Acquisto'] = df_temp.apply(lambda x: x['importo_totale'] if x['sconto_perc'] < 100 else 0, axis=1)
                     df_temp['Regali'] = df_temp.apply(lambda x: x['importo_totale'] if x['sconto_perc'] == 100 else 0, axis=1)
                     
+                    # Aggreghiamo i dati per la funzione PDF
                     report_data = df_temp.groupby('stanza').agg({'Acquisto': 'sum', 'Regali': 'sum'}).reset_index()
-                    report_data['Totale Stanza'] = report_data['Acquisto'] + report_data['Regali']
                     
-                    # 2. Generazione PDF (una sola volta!)
+                    # Chiamata alla tua funzione pulita
                     pdf_raw = genera_pdf_finale_separato(report_data.to_dict('records'))
                     
-                    # 3. Conversione in bytes
+                    # Conversione per Streamlit
                     pdf_final = bytes(pdf_raw) 
                     
-                    # 4. Tasto di Download
                     st.download_button(
-                        label="💾 Clicca qui per scaricare il Report",
+                        label="⬇️ Scarica Report PDF",
                         data=pdf_final,
-                        file_name=f"Analisi_Proprieta_{datetime.now().strftime('%Y%m%d')}.pdf",
+                        file_name=f"Analisi_Investimento_Proprietà.pdf",
                         mime="application/pdf",
                         use_container_width=True
                     )
-                    st.success("✅ Report della Proprietà pronto per il download!")
-
+                    st.success("✅ Report generato! Clicca sopra per scaricare.")
                 except Exception as e:
-                    st.error(f"Errore durante la creazione del PDF: {e}")
+                    st.error(f"Errore nel calcolo: {e}")
             else:
-                st.warning("⚠️ Non ci sono dati con 'Acquista = S' per generare il report.")
-        # --- NOVITÀ: FILTRO DINAMICO ---
+                st.warning("Nessun dato trovato con 'Acquista = S'")
+
+
+
         if not df_tutto.empty:
             stanze_disponibili = sorted(df_tutto['stanza'].unique().tolist())
             col_f1, col_f2 = st.columns([2, 3])
